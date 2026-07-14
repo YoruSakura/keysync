@@ -180,6 +180,50 @@ class EventHandlerTest {
         )
     }
 
+    @Test
+    fun `WASD and camera pointer remain independent after repeated aiming toggles`() {
+        val injector = RecordingEventInjector()
+        val handler = EventHandler(injector)
+        handler.updateKeyMapping(
+            listOf(
+                wasdGroup(),
+                DraggableItem.FixedKey(
+                    id = 2,
+                    position = Offset(500f, 200f),
+                    type = DraggableItemType.SHOOTING_MODE,
+                    keyCode = KEYCODE_MMC,
+                    size = 90
+                )
+            )
+        )
+
+        assertTrue(handler.handleKeyEvent(KeyEvent.KEYCODE_W, MotionEvent.ACTION_DOWN))
+        repeat(5) {
+            assertTrue(handler.handleMouseButton(MotionEvent.BUTTON_TERTIARY, true))
+            handler.handleMouseButton(MotionEvent.BUTTON_TERTIARY, false)
+            assertTrue(handler.handleMouseButton(MotionEvent.BUTTON_TERTIARY, true))
+            handler.handleMouseButton(MotionEvent.BUTTON_TERTIARY, false)
+        }
+        assertTrue(handler.handleMouseButton(MotionEvent.BUTTON_TERTIARY, true))
+        handler.handleMouseButton(MotionEvent.BUTTON_TERTIARY, false)
+
+        assertTrue(handler.handleKeyEvent(KeyEvent.KEYCODE_D, MotionEvent.ACTION_DOWN))
+        assertTrue(handler.handlePointerMove(Offset(8f, -3f)))
+
+        assertEquals(
+            listOf(
+                RecordingEventInjector.Call.InjectPointer(
+                    pointerId = 1,
+                    start = Offset(530f, 230f),
+                    end = null
+                ),
+                RecordingEventInjector.Call.TransformGesture(0, NORTH_EAST),
+                RecordingEventInjector.Call.UpdatePointer(1, Offset(8f, -3f))
+            ),
+            injector.calls.takeLast(3)
+        )
+    }
+
     private fun variableKey(id: Int, keyCode: Int, position: Offset) =
         DraggableItem.VariableKey(
             id = id,

@@ -1,5 +1,6 @@
 package com.devoid.keysync.domain
 
+import android.os.SystemClock
 import android.util.SparseIntArray
 import android.view.Display
 import android.view.InputDevice
@@ -11,6 +12,7 @@ class EventManagerImpl : EventManager {
     private val maxPointers = 10//only this no of pointers can be active at a time
     private val pointerIndexMap = SparseIntArray(maxPointers)
     private var activePointerCount = 0
+    private var gestureDownTime = 0L
 
     private val propsArray = Array(maxPointers) { MotionEvent.PointerProperties() }
     private val coordsArray = Array(maxPointers) { MotionEvent.PointerCoords() }
@@ -27,6 +29,9 @@ class EventManagerImpl : EventManager {
             return -2
         }
         index = activePointerCount
+        if (activePointerCount == 0) {
+            gestureDownTime = SystemClock.uptimeMillis()
+        }
         pointerIndexMap.put(id, index)
 
         // Initialize
@@ -70,15 +75,17 @@ class EventManagerImpl : EventManager {
         }
         pointerIndexMap.delete(id)
         activePointerCount--
+        if (activePointerCount == 0) gestureDownTime = 0L
         return removedIndex
     }
 
-    override suspend fun createMotionEvent(action: Int, downTime: Long): MotionEvent? {
+    override suspend fun createMotionEvent(action: Int): MotionEvent? {
         if (activePointerCount <= 0)
             return null
+        val eventTime = SystemClock.uptimeMillis()
         val event = MotionEvent.obtain(
-            downTime,
-            downTime,
+            gestureDownTime,
+            eventTime,
             action,
             activePointerCount,
             propsArray.sliceArray(0 until activePointerCount),
@@ -134,6 +141,7 @@ class EventManagerImpl : EventManager {
             return false
         pointerIndexMap.clear()
         activePointerCount = 0
+        gestureDownTime = 0L
         return true
     }
 }
