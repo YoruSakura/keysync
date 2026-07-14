@@ -124,18 +124,36 @@ fun SettingsScreen(
                             color = MaterialTheme.colorScheme.primary
                         )
                         Row {
-                            KeyConfigTextField(title = stringResource(R.string.toggle_aiming_mode), value = newConfig.shootingModeKeyCode.localizedKeyName()) {
+                            KeyConfigTextField(
+                                title = stringResource(R.string.toggle_aiming_mode),
+                                value = newConfig.shootingModeKeyCode.localizedKeyName(),
+                                onMouseKeyEvent = {
+                                    newConfig = newConfig.copy(shootingModeKeyCode = it)
+                                }
+                            ) {
                                 newConfig=newConfig.copy(shootingModeKeyCode = it.nativeKeyEvent.keyCode)
                                 return@KeyConfigTextField true
                             }
                         }
                         HorizontalDivider()
-                        KeyConfigTextField(title = stringResource(R.string.fire_action), value = newConfig.fireKeyCode.localizedKeyName()) {
+                        KeyConfigTextField(
+                            title = stringResource(R.string.fire_action),
+                            value = newConfig.fireKeyCode.localizedKeyName(),
+                            onMouseKeyEvent = {
+                                newConfig = newConfig.copy(fireKeyCode = it)
+                            }
+                        ) {
                             newConfig=newConfig.copy(fireKeyCode = it.nativeKeyEvent.keyCode)
                             return@KeyConfigTextField true
                         }
                         HorizontalDivider()
-                        KeyConfigTextField(title = stringResource(R.string.scope_action), value = newConfig.scopeKeyCode.localizedKeyName()) {
+                        KeyConfigTextField(
+                            title = stringResource(R.string.scope_action),
+                            value = newConfig.scopeKeyCode.localizedKeyName(),
+                            onMouseKeyEvent = {
+                                newConfig = newConfig.copy(scopeKeyCode = it)
+                            }
+                        ) {
                             newConfig=newConfig.copy(scopeKeyCode = it.nativeKeyEvent.keyCode)
                             return@KeyConfigTextField true
                         }
@@ -504,6 +522,7 @@ fun KeyConfigTextField(
     modifier: Modifier = Modifier,
     title: String,
     value: String,
+    onMouseKeyEvent: (Int) -> Unit = {},
     onKeyEvent: (KeyEvent) -> Boolean
 ) {
     val focusRequester = remember { FocusRequester() }
@@ -520,7 +539,9 @@ fun KeyConfigTextField(
             1.dp,
             color = if (hasFocus)   Color.Cyan else MaterialTheme.colorScheme.outline
         ),
-            modifier = Modifier.clickable { focusRequester.requestFocus() }) {
+            modifier = Modifier
+                .captureMouseButtonBinding(hasFocus, onMouseKeyEvent)
+                .clickable { focusRequester.requestFocus() }) {
             Text(
                 modifier = Modifier
                     .padding(vertical = 8.dp, horizontal = 16.dp)

@@ -37,7 +37,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -80,6 +79,8 @@ import com.devoid.keysync.R
 import com.devoid.keysync.model.AppConfig
 import com.devoid.keysync.model.DraggableItem
 import com.devoid.keysync.model.DraggableItemType
+import com.devoid.keysync.ui.captureMouseButtonBinding
+import com.devoid.keysync.util.keyCodeToString
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -125,6 +126,16 @@ fun ItemsContainer(
     appConfig: AppConfig = AppConfig.Default,
     onRemove: (Int) -> Unit
 ) {
+    val unknownKey = stringResource(R.string.unknown_key)
+    val leftMouseButton = stringResource(R.string.left_mouse_button)
+    val rightMouseButton = stringResource(R.string.right_mouse_button)
+    val middleMouseButton = stringResource(R.string.middle_mouse_button)
+    fun Int.localizedKeyName() = keyCodeToString(
+        unknownLabel = unknownKey,
+        leftMouseButtonLabel = leftMouseButton,
+        rightMouseButtonLabel = rightMouseButton,
+        middleMouseButtonLabel = middleMouseButton
+    )
     Box(
         modifier
             .fillMaxSize()
@@ -140,13 +151,7 @@ fun ItemsContainer(
                     var hasFocus by remember { mutableStateOf(false) }
                     val keyFocusRequester = remember { FocusRequester() }
                     var keyCode by remember(item.id) { mutableStateOf(item.keyCode) }
-                    val text by remember(item.id) {
-                        derivedStateOf {
-                            keyCode?.let {
-                                KeyEvent.keyCodeToString(it).replace("KEYCODE_", "")
-                            } ?: "?"
-                        }
-                    }
+                    val text = keyCode?.localizedKeyName() ?: "?"
 
                     DraggableItem(
                         scale = scale,
@@ -172,6 +177,10 @@ fun ItemsContainer(
                                     item.keyCode = nativeKeyCode
                                     keyCode = nativeKeyCode
                                     true
+                                }
+                                .captureMouseButtonBinding(hasFocus) { mouseKeyCode ->
+                                    item.keyCode = mouseKeyCode
+                                    keyCode = mouseKeyCode
                                 }
                                 .focusRequester(keyFocusRequester)
                                 .focusable(),
@@ -212,13 +221,7 @@ fun ItemsContainer(
                         var hasFocus by remember { mutableStateOf(false) }
                         val keyFocusRequester = remember { FocusRequester() }
                         var keyCode by remember(item.id) { mutableStateOf(item.keyCode) }
-                        val text by remember(item.id) {
-                            derivedStateOf {
-                                keyCode?.let {
-                                    KeyEvent.keyCodeToString(it).replace("KEYCODE_", "")
-                                } ?: "?"
-                            }
-                        }
+                        val text = keyCode?.localizedKeyName() ?: "?"
                         LaunchedEffect(Unit) {
                             keyFocusRequester.requestFocus()
                         }
@@ -241,6 +244,10 @@ fun ItemsContainer(
                                     item.keyCode = nativeKeyCode
                                     keyCode = nativeKeyCode
                                     true
+                                }
+                                .captureMouseButtonBinding(hasFocus) { mouseKeyCode ->
+                                    item.keyCode = mouseKeyCode
+                                    keyCode = mouseKeyCode
                                 }
                                 .onFocusChanged {
                                     hasFocus = it.hasFocus

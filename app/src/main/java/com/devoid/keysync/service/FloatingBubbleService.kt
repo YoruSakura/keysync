@@ -9,6 +9,7 @@ import android.graphics.PixelFormat
 import android.os.IBinder
 import android.util.Log
 import android.view.Gravity
+import android.view.ViewTreeObserver
 import android.view.WindowManager
 import android.widget.FrameLayout
 import androidx.compose.animation.AnimatedVisibility
@@ -78,6 +79,7 @@ import kotlin.math.roundToInt
 class FloatingBubbleService : Service() {
     private val TAG = "FloatingBubbleService"
     private lateinit var floatingBubbleLP: WindowManager.LayoutParams
+    private lateinit var itemsContainerLP: WindowManager.LayoutParams
 
     @Inject
     lateinit var stateManager: Lazy<FloatingWindowStateManager>
@@ -93,6 +95,8 @@ class FloatingBubbleService : Service() {
     private val scope = CoroutineScope(Dispatchers.Main)
     private var containerView: ComposeView? = null
     private var floatingBubbleView: ComposeView? = null
+    private var windowFocusChangeListener: ViewTreeObserver.OnWindowFocusChangeListener? = null
+    private val restoreInputCaptureRunnable = Runnable { restoreInputCapture() }
 
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -139,7 +143,7 @@ class FloatingBubbleService : Service() {
         )
         floatingBubbleLP.gravity = Gravity.START or Gravity.TOP
 
-        val itemsContainerLP = WindowManager.LayoutParams()
+        itemsContainerLP = WindowManager.LayoutParams()
         itemsContainerLP.copyFrom(floatingBubbleLP)
 
         containerView =
@@ -179,18 +183,51 @@ class FloatingBubbleService : Service() {
                         containerView,
                         itemsContainerLP
                     )
-                    containerView?.requestFocus()
-                    containerView?.requestPointerCapture()
+                    scheduleInputCaptureRestore(delayMillis = 0)
                 }
             }
         }
         stateManager.get().windowManager.addView(containerView, itemsContainerLP)
         floatingBubbleLP.y = 200
         stateManager.get().windowManager.addView(floatingBubbleView, floatingBubbleLP)
-        containerView?.postDelayed({
-            containerView?.requestFocus()
-            containerView?.requestPointerCapture()
-        }, 1000)
+        scheduleInputCaptureRestore(delayMillis = 1000)
+    }
+
+    private fun scheduleInputCaptureRestore(delayMillis: Long = 100) {
+        val view = containerView ?: return
+        view.removeCallbacks(restoreInputCaptureRunnable)
+        view.postDelayed(restoreInputCaptureRunnable, delayMillis)
+    }
+
+    private fun restoreInputCapture() {
+        val view = containerView ?: return
+        if (!view.isAttachedToWindow || stateManager.get().isBubbleExpanded.value) return
+
+        // A touch on the game transfers window focus away from this otherwise
+        // touch-through overlay. Refreshing the layout makes the focusable
+        // overlay eligible again before pointer capture is requested.
+        val focusableFlags =
+            itemsContainerLP.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
+        itemsContainerLP.flags =
+            focusableFlags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+        runCatching {
+            stateManager.get().windowManager.updateViewLayout(view, itemsContainerLP)
+        }
+        itemsContainerLP.flags = focusableFlags
+        runCatching {
+            stateManager.get().windowManager.updateViewLayout(view, itemsContainerLP)
+        }
+        view.clearFocus()
+        view.requestFocus()
+        view.post {
+            if (stateManager.get().isBubbleExpanded.value) return@post
+            if (view.hasWindowFocus()) {
+                view.removeCallbacks(restoreInputCaptureRunnable)
+                if (!view.hasPointerCapture()) view.requestPointerCapture()
+            } else {
+                scheduleInputCaptureRestore()
+            }
+        }
     }
 
 
@@ -258,6 +295,20 @@ class FloatingBubbleService : Service() {
         composeView.isFocusable = true
         composeView.isClickable = true
         composeView.isFocusableInTouchMode = true
+        val focusChangeListener = ViewTreeObserver.OnWindowFocusChangeListener { hasFocus ->
+            if (!stateManager.get().isBubbleExpanded.value) {
+                if (hasFocus) {
+                    composeView.removeCallbacks(restoreInputCaptureRunnable)
+                    composeView.post {
+                        if (!composeView.hasPointerCapture()) composeView.requestPointerCapture()
+                    }
+                } else {
+                    scheduleInputCaptureRestore()
+                }
+            }
+        }
+        windowFocusChangeListener = focusChangeListener
+        composeView.viewTreeObserver.addOnWindowFocusChangeListener(focusChangeListener)
         composeView.post {
             composeView.setOnCapturedPointerListener { _, motionEvent ->
                 stateManager.get().onMouseEvent(motionEvent)
@@ -276,6 +327,13 @@ class FloatingBubbleService : Service() {
 
     override fun onDestroy() {
         _isRunning.value = false
+        containerView?.removeCallbacks(restoreInputCaptureRunnable)
+        windowFocusChangeListener?.let { listener ->
+            containerView?.viewTreeObserver
+                ?.takeIf { it.isAlive }
+                ?.removeOnWindowFocusChangeListener(listener)
+        }
+        windowFocusChangeListener = null
         removeAllViews()
         stateManager.get().onDestroy()
         lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)

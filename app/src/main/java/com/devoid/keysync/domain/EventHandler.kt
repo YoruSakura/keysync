@@ -448,6 +448,16 @@ const val KEYCODE_LMC = 1 shl 6//mouse left click
 const val KEYCODE_RMC = 1 shl 7//mouse right click
 const val KEYCODE_MMC = 1 shl 8//mouse middle click
 
+fun mouseButtonToKeyCode(button: Int): Int? = when (button) {
+    MotionEvent.BUTTON_PRIMARY -> KEYCODE_LMC
+    MotionEvent.BUTTON_SECONDARY -> KEYCODE_RMC
+    MotionEvent.BUTTON_TERTIARY -> KEYCODE_MMC
+    else -> null
+}
+
+fun isMouseButtonKeyCode(keyCode: Int): Boolean =
+    keyCode == KEYCODE_LMC || keyCode == KEYCODE_RMC || keyCode == KEYCODE_MMC
+
 
 private fun keyToWasdMask(keyCode: Int): Int = when (keyCode) {
     Key.W.nativeKeyCode -> MASK_W
@@ -466,6 +476,7 @@ class EventHandler(
     private val keyMap = HashMap<Int, KeyMap>(64)
     private val cancelKeyMap = HashMap<Int, KeyMap>(16)
     private val wasdKeyMap = HashMap<Int, KeyMap>(8)
+    private val explicitlyMappedMouseKeys = HashSet<Int>(3)
 
     private val physicalKeysDown = HashSet<Int>(16)
     private val normalKeyStates = HashMap<Int, Boolean>(64)
@@ -629,18 +640,24 @@ class EventHandler(
     /* ---------- mouse ---------- */
 
     fun handleMouseButton(button: Int, pressed: Boolean): Boolean {
-        val keyCode = when (button) {
-            MotionEvent.BUTTON_PRIMARY -> KEYCODE_LMC
-            MotionEvent.BUTTON_SECONDARY -> KEYCODE_RMC
-            MotionEvent.BUTTON_TERTIARY -> KEYCODE_MMC
-            else -> return false
-        }
+        val keyCode = mouseButtonToKeyCode(button) ?: return false
         if (keyCode == appConfig.shootingModeKeyCode) {
             if (!pressed) return false
             toggleShootingMode()
             return true
         }
         val pointerId = pointerIds[keyCode] ?: return false
+
+        if (keyCode in explicitlyMappedMouseKeys) {
+            if (pressed) {
+                if (!physicalKeysDown.add(keyCode)) return true
+                handleKeyDown(keyCode, pointerId)
+            } else {
+                physicalKeysDown.remove(keyCode)
+                handleKeyUp(keyCode, pointerId)
+            }
+            return true
+        }
 
         if (!shootingMode) {
             simulateNativeClick(pointerId = pointerId, pressed = pressed)
@@ -704,6 +721,7 @@ class EventHandler(
         keyMap.clear()
         cancelKeyMap.clear()
         wasdKeyMap.clear()
+        explicitlyMappedMouseKeys.clear()
         pointerIds.clear()
         physicalKeysDown.clear()
         normalKeyStates.clear()
@@ -750,6 +768,7 @@ class EventHandler(
 
                 is DraggableItem.VariableKey -> {
                     val k = item.keyCode ?: return@forEach
+                    if (isMouseButtonKeyCode(k)) explicitlyMappedMouseKeys.add(k)
                     var position = item.position
                     val shrinkSize =
                         item.size / 3f  //shrink the size so that artificial taps can be accurate on circular buttons
@@ -780,6 +799,7 @@ class EventHandler(
 
                 is DraggableItem.CancelableKey -> {
                     val k = item.keyCode ?: return@forEach
+                    if (isMouseButtonKeyCode(k)) explicitlyMappedMouseKeys.add(k)
                     var position =
                         item.position
                     var cancelPosition =

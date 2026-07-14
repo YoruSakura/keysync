@@ -136,6 +136,50 @@ class EventHandlerTest {
         assertEquals(listOf(Offset(130f, 130f), Offset(330f, 330f)), injectedPositions)
     }
 
+    @Test
+    fun `right mouse button can trigger an ordinary key mapping`() {
+        val injector = RecordingEventInjector()
+        val handler = EventHandler(injector)
+        handler.setNormalBtnTouchMode(TouchMode.TAP)
+        handler.updateKeyMapping(
+            listOf(variableKey(1, KEYCODE_RMC, Offset(600f, 400f)))
+        )
+
+        assertTrue(handler.handleMouseButton(MotionEvent.BUTTON_SECONDARY, true))
+        assertTrue(handler.handleMouseButton(MotionEvent.BUTTON_SECONDARY, false))
+
+        assertEquals(
+            listOf(
+                RecordingEventInjector.Call.InjectPointer(
+                    pointerId = 0,
+                    start = Offset(630f, 430f),
+                    end = Offset(660f, 460f)
+                ),
+                RecordingEventInjector.Call.ReleasePointer(0)
+            ),
+            injector.calls
+        )
+    }
+
+    @Test
+    fun `unmapped left mouse button remains a native pointer click`() {
+        val injector = RecordingEventInjector()
+        val handler = EventHandler(injector)
+        handler.mousePointerPosition = Offset(320f, 240f)
+        handler.updateKeyMapping(emptyList())
+
+        assertTrue(handler.handleMouseButton(MotionEvent.BUTTON_PRIMARY, true))
+        assertTrue(handler.handleMouseButton(MotionEvent.BUTTON_PRIMARY, false))
+
+        assertEquals(
+            listOf(
+                RecordingEventInjector.Call.InjectPointer(0, Offset(320f, 240f), null),
+                RecordingEventInjector.Call.ReleasePointer(0)
+            ),
+            injector.calls
+        )
+    }
+
     private fun variableKey(id: Int, keyCode: Int, position: Offset) =
         DraggableItem.VariableKey(
             id = id,
