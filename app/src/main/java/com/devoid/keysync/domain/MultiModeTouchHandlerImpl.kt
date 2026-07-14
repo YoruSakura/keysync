@@ -1,6 +1,5 @@
 package com.devoid.keysync.domain
 
-import android.view.KeyEvent
 import android.view.MotionEvent
 import com.devoid.keysync.model.EventInjector
 import com.devoid.keysync.model.KeyMap
@@ -8,12 +7,12 @@ import com.devoid.keysync.model.MultiModeTouchHandler
 
 class TapModeTouchHandler(private val eventInjector: EventInjector) : MultiModeTouchHandler {
     override fun handleTouchEvent(
-        keyEvent: KeyEvent,
+        action: Int,
         isPressed: Boolean,
         pointerId: Int,
         keyMap: KeyMap
     ): Boolean {
-        if (keyEvent.action == MotionEvent.ACTION_DOWN) {
+        if (action == MotionEvent.ACTION_DOWN) {
             eventInjector.injectPointer(pointerId, keyMap.position, keyMap.end!!)
             eventInjector.releasePointer(pointerId)
             return !isPressed
@@ -24,15 +23,15 @@ class TapModeTouchHandler(private val eventInjector: EventInjector) : MultiModeT
 
 class HoldModeTouchHandler(private val eventInjector: EventInjector) : MultiModeTouchHandler {
     override fun handleTouchEvent(
-        keyEvent: KeyEvent,
+        action: Int,
         isPressed: Boolean,
         pointerId: Int,
         keyMap: KeyMap
     ): Boolean {
-        return if (keyEvent.action == MotionEvent.ACTION_DOWN) {
+        return if (action == MotionEvent.ACTION_DOWN) {
             eventInjector.injectPointer(pointerId, keyMap.position, keyMap.end!!)
             true
-        }else if (keyEvent.action == MotionEvent.ACTION_UP){
+        }else if (action == MotionEvent.ACTION_UP){
             eventInjector.releasePointer(pointerId)
             false
         }else
@@ -44,12 +43,12 @@ class MixedModeTouchHandler(private val eventInjector: EventInjector) : MultiMod
     private var lastKeyDownMap = hashMapOf<Int, Long>()
     private val minDifference = 200
     override fun handleTouchEvent(
-        keyEvent: KeyEvent,
+        action: Int,
         isPressed: Boolean,
         pointerId: Int,
         keyMap: KeyMap
     ): Boolean {
-        if (keyEvent.action == MotionEvent.ACTION_DOWN) {
+        if (action == MotionEvent.ACTION_DOWN) {
             lastKeyDownMap[pointerId] = System.currentTimeMillis()
             if (isPressed) {
                 eventInjector.releasePointer(pointerId)
@@ -57,7 +56,7 @@ class MixedModeTouchHandler(private val eventInjector: EventInjector) : MultiMod
                 eventInjector.injectPointer(pointerId, keyMap.position, keyMap.end!!)
             }
             return !isPressed
-        } else if (keyEvent.action == MotionEvent.ACTION_UP) {
+        } else if (action == MotionEvent.ACTION_UP) {
             if (!isPressed)
                 return false
             val difference = System.currentTimeMillis() - (lastKeyDownMap[pointerId] ?: 0)

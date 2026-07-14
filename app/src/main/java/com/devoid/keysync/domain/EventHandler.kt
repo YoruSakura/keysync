@@ -1,6 +1,5 @@
 package com.devoid.keysync.domain
 
-import android.util.Log
 import android.view.KeyEvent
 import android.view.MotionEvent
 import androidx.compose.ui.geometry.Offset
@@ -445,9 +444,6 @@ private const val MASK_A = 1 shl 1
 private const val MASK_S = 1 shl 2
 private const val MASK_D = 1 shl 3
 
-const val KEYCODE_CANCEL = 1 shl 4//cancel button for cancelable components
-
-const val KEYCODE_WASD = 1 shl 5//custom keycode for key groups
 const val KEYCODE_LMC = 1 shl 6//mouse left click
 const val KEYCODE_RMC = 1 shl 7//mouse right click
 const val KEYCODE_MMC = 1 shl 8//mouse middle click
@@ -468,17 +464,17 @@ class EventHandler(
     /* ---------- state ---------- */
 
     private val keyMap = HashMap<Int, KeyMap>(64)
+    private val cancelKeyMap = HashMap<Int, KeyMap>(16)
+    private val wasdKeyMap = HashMap<Int, KeyMap>(8)
 
-    private val pressed = BooleanArray(338)
-    private val cancelToggle = BooleanArray(338)
-    private val pointerIds = IntArray(512) { -1 }
+    private val physicalKeysDown = HashSet<Int>(16)
+    private val normalKeyStates = HashMap<Int, Boolean>(64)
+    private val cancelToggle = HashMap<Int, Boolean>(16)
+    private val pointerIds = HashMap<Int, Int>(64)
+    private var wasdPointerId: Int? = null
 
     private var wasdMask = 0
     private var lastWasdMask = 0
-
-    private val keyIdMap = HashMap<Int, Int>(64)
-    private var nextKeyId = 0
-
 
     @Volatile
     private var shootingMode = false
@@ -492,9 +488,6 @@ class EventHandler(
     private var cancelableTouchHandler: MultiModeTouchHandler = MixedModeTouchHandler(eventInjector)
     private var normalTouchHandler: MultiModeTouchHandler = MixedModeTouchHandler(eventInjector)
 
-
-    private fun keyId(keyCode: Int): Int =
-        keyIdMap.getOrPut(keyCode) { nextKeyId++ }
 
     /* ---------- touch mode ---------- */
 
@@ -525,37 +518,35 @@ class EventHandler(
 
     /* ---------- key events ---------- */
 
-    fun handleKeyEvent(event: KeyEvent): Boolean {
-        val wasdBit = keyToWasdMask(event.keyCode)
-        val pointerIdKey = if (wasdBit != 0) KEYCODE_WASD else event.keyCode
+    fun handleKeyEvent(event: KeyEvent): Boolean =
+        handleKeyEvent(event.keyCode, event.action)
 
-        val pointerId = pointerIds[pointerIdKey]
-        if (pointerId == -1) return false
+    internal fun handleKeyEvent(keyCode: Int, action: Int): Boolean {
+        val wasdBit = keyToWasdMask(keyCode)
+        val pointerId = if (wasdBit != 0) wasdPointerId else pointerIds[keyCode]
+        if (pointerId == null) return false
 
-        when (event.action) {
+        when (action) {
             MotionEvent.ACTION_DOWN -> {
-                if (pressed[event.keyCode]) return true
-                pressed[event.keyCode] = true
+                if (!physicalKeysDown.add(keyCode)) return true
 
                 if (wasdBit != 0) {
                     wasdMask = wasdMask or wasdBit
                     handleWasd(pointerId)
                 } else {
-                    handleKeyDown(event.keyCode, pointerId)
+                    handleKeyDown(keyCode, pointerId)
                 }
                 return true
             }
 
             MotionEvent.ACTION_UP -> {
-                pressed[event.keyCode] = false
+                physicalKeysDown.remove(keyCode)
 
                 if (wasdBit != 0) {
-                    Log.i("EventHandler", "release wasdMask before: $wasdMask")
                     wasdMask = wasdMask and wasdBit.inv()
-                    Log.i("EventHandler", "release wasdMask after: $wasdMask")
                     handleWasd(pointerId)
                 } else {
-                    handleKeyUp(event.keyCode, pointerId)
+                    handleKeyUp(keyCode, pointerId)
                 }
                 return true
             }
@@ -572,20 +563,14 @@ class EventHandler(
             return
         }
 
-        keyMap[wasdMask]?.let {
-            val wasActive = lastWasdMask != 0
-//            val isCombo = wasdMask.countOneBits() > 1
-
-            if (wasActive) {
-                // gesture already exists → transform
-                eventInjector.transFormGesture(pointerId, it.position)
-            } else {
-                // first key press → inject
-                eventInjector.injectGesture(pointerId, it.center!!, it.position)
-            }
-
-            lastWasdMask = wasdMask
+        val mapping = wasdKeyMap[wasdMask] ?: return
+        if (lastWasdMask != 0) {
+            eventInjector.transFormGesture(pointerId, mapping.position)
+        } else {
+            val center = mapping.center ?: return
+            eventInjector.injectGesture(pointerId, center, mapping.position)
         }
+        lastWasdMask = wasdMask
     }
 
 
@@ -598,19 +583,19 @@ class EventHandler(
                 return
             }
             if (it.type == KeymapType.CANCELABLE) {
-                val id = keyId(keyCode)
-                cancelToggle[id] = if (cancelToggle[id]){
-                    keyMap[keyCode or KEYCODE_CANCEL]?.let {
-                        cancelableTouchHandler.handleTouchEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode),cancelToggle[id],pointerId,it)
-                    }?:false
-                }else{
-                    cancelableTouchHandler.handleTouchEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode),cancelToggle[id],pointerId,it)
-                }
+                val isToggled = cancelToggle[keyCode] ?: false
+                val mapping = if (isToggled) cancelKeyMap[keyCode] ?: return else it
+                cancelToggle[keyCode] = cancelableTouchHandler.handleTouchEvent(
+                    MotionEvent.ACTION_DOWN,
+                    isToggled,
+                    pointerId,
+                    mapping
+                )
             } else {
-                val id = keyId(keyCode)
-                pressed[id]=normalTouchHandler.handleTouchEvent(
-                    KeyEvent(KeyEvent.ACTION_DOWN, keyCode),
-                    pressed[id],
+                val isPressed = normalKeyStates[keyCode] ?: false
+                normalKeyStates[keyCode] = normalTouchHandler.handleTouchEvent(
+                    MotionEvent.ACTION_DOWN,
+                    isPressed,
                     pointerId,
                     it
                 )
@@ -619,22 +604,22 @@ class EventHandler(
     }
 
     private fun handleKeyUp(keyCode: Int, pointerId: Int) {
-//        val cancelKey = keyCode or KEYCODE_CANCEL
-        val id = keyId(keyCode)
         keyMap[keyCode]?.let {
             if (it.type == KeymapType.CANCELABLE){
-                cancelToggle[id] = if (cancelToggle[id]){
-                    keyMap[keyCode or KEYCODE_CANCEL]?.let {
-                        cancelableTouchHandler.handleTouchEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode),cancelToggle[id],pointerId,it)
-                    }?:false
-                }else{
-                    cancelableTouchHandler.handleTouchEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode),cancelToggle[id],pointerId,it)
-                }
+                val isToggled = cancelToggle[keyCode] ?: false
+                val mapping = if (isToggled) cancelKeyMap[keyCode] ?: return else it
+                cancelToggle[keyCode] = cancelableTouchHandler.handleTouchEvent(
+                    MotionEvent.ACTION_UP,
+                    isToggled,
+                    pointerId,
+                    mapping
+                )
                 return
             }
-            pressed[id] =  normalTouchHandler.handleTouchEvent(
-                KeyEvent(KeyEvent.ACTION_UP, keyCode),
-                pressed[id],
+            val isPressed = normalKeyStates[keyCode] ?: false
+            normalKeyStates[keyCode] = normalTouchHandler.handleTouchEvent(
+                MotionEvent.ACTION_UP,
+                isPressed,
                 pointerId,
                 it
             )
@@ -655,8 +640,7 @@ class EventHandler(
             toggleShootingMode()
             return true
         }
-        val pointerId = pointerIds[keyCode]
-        if (pointerId == -1) return false
+        val pointerId = pointerIds[keyCode] ?: return false
 
         if (!shootingMode) {
             simulateNativeClick(pointerId = pointerId, pressed = pressed)
@@ -678,7 +662,7 @@ class EventHandler(
         else
             pointerIds[KEYCODE_LMC]
 
-        pointerId.takeIf { it != -1 }?.let {
+        pointerId?.let {
             eventInjector.updatePointerPosition(it, position)
             return true
         }
@@ -694,7 +678,7 @@ class EventHandler(
         val key = appConfig.shootingModeKeyCode
         val pointerId = pointerIds[key]
 
-        if (pointerId != -1) {
+        if (pointerId != null) {
             if (newState)
                 keyMap[key]?.let { eventInjector.injectPointer(pointerId, it.position) }
             else
@@ -718,21 +702,28 @@ class EventHandler(
 
     fun updateKeyMapping(items: List<DraggableItem>) {
         keyMap.clear()
-        pointerIds.fill(-1)
+        cancelKeyMap.clear()
+        wasdKeyMap.clear()
+        pointerIds.clear()
+        physicalKeysDown.clear()
+        normalKeyStates.clear()
+        cancelToggle.clear()
+        wasdPointerId = null
+        wasdMask = 0
+        lastWasdMask = 0
         var nextPointer = 0
 
         fun alloc(key: Int) {
-            if (pointerIds[key] == -1)
-                pointerIds[key] = nextPointer++
+            pointerIds.getOrPut(key) { nextPointer++ }
         }
 
         items.forEach { item ->
             when (item) {
                 is DraggableItem.WASDGroup -> {
-                    keyMap[MASK_W] = KeyMap(position = item.w, center = item.center)
-                    keyMap[MASK_A] = KeyMap(position = item.a, center = item.center)
-                    keyMap[MASK_S] = KeyMap(position = item.s, center = item.center)
-                    keyMap[MASK_D] = KeyMap(position = item.d, center = item.center)
+                    wasdKeyMap[MASK_W] = KeyMap(position = item.w, center = item.center)
+                    wasdKeyMap[MASK_A] = KeyMap(position = item.a, center = item.center)
+                    wasdKeyMap[MASK_S] = KeyMap(position = item.s, center = item.center)
+                    wasdKeyMap[MASK_D] = KeyMap(position = item.d, center = item.center)
                     val wa = Offset(
                         x = item.w.x - ((item.w.x - item.a.x) / 2),
                         y = item.w.y + ((item.a.y - item.w.y) / 2)
@@ -749,12 +740,12 @@ class EventHandler(
                         x = item.s.x + ((item.d.x - item.s.x) / 2),
                         y = item.s.y + ((item.d.y - item.s.y) / 2)
                     )
-                    keyMap[MASK_W or MASK_A] = KeyMap(position = wa, center = item.center)
-                    keyMap[MASK_W or MASK_D] = KeyMap(position = wd, center = item.center)
-                    keyMap[MASK_S or MASK_A] = KeyMap(position = sa, center = item.center)
-                    keyMap[MASK_S or MASK_D] = KeyMap(position = sd, center = item.center)
+                    wasdKeyMap[MASK_W or MASK_A] = KeyMap(position = wa, center = item.center)
+                    wasdKeyMap[MASK_W or MASK_D] = KeyMap(position = wd, center = item.center)
+                    wasdKeyMap[MASK_S or MASK_A] = KeyMap(position = sa, center = item.center)
+                    wasdKeyMap[MASK_S or MASK_D] = KeyMap(position = sd, center = item.center)
 
-                    alloc(KEYCODE_WASD)
+                    if (wasdPointerId == null) wasdPointerId = nextPointer++
                 }
 
                 is DraggableItem.VariableKey -> {
@@ -807,8 +798,7 @@ class EventHandler(
                         Offset(cancelPosition.x + shrinkSize, cancelPosition.y + shrinkSize)
                     keyMap[k] =
                         KeyMap(type = KeymapType.CANCELABLE, position = position, end = end)
-                    val cancelKey = k or KEYCODE_CANCEL
-                    keyMap[cancelKey] =
+                    cancelKeyMap[k] =
                         KeyMap(
                             type = KeymapType.CANCELABLE,
                             position = cancelPosition,
@@ -824,8 +814,11 @@ class EventHandler(
 
     fun clear() {
         eventInjector.clear()
-        pressed.fill(false)
+        physicalKeysDown.clear()
+        normalKeyStates.clear()
+        cancelToggle.clear()
         wasdMask = 0
-        shootingMode = false
+        lastWasdMask = 0
+        setShootingMode(false)
     }
 }

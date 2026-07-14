@@ -1,6 +1,3 @@
-import org.jetbrains.kotlin.konan.properties.Properties
-import java.io.FileInputStream
-
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -10,17 +7,30 @@ plugins {
     id("kotlinx-serialization")
 }
 
+val releaseStoreFile = providers.gradleProperty("storeFile").orNull
+val releaseStorePassword = providers.gradleProperty("storePassword").orNull
+val releaseKeyAlias = providers.gradleProperty("keyAlias").orNull
+val releaseKeyPassword = providers.gradleProperty("keyPassword").orNull
+val hasReleaseSigning = listOf(
+    releaseStoreFile,
+    releaseStorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword
+).all { it != null }
+
 android {
 
     namespace = "com.devoid.keysync"
     compileSdk = 35
 
     signingConfigs {
-        create("release") {
-            storeFile = file(property("storeFile")!!)
-            storePassword = property("storePassword") as String
-            keyAlias = property("keyAlias") as String
-            keyPassword = property("keyPassword") as String
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = file(requireNotNull(releaseStoreFile))
+                storePassword = requireNotNull(releaseStorePassword)
+                keyAlias = requireNotNull(releaseKeyAlias)
+                keyPassword = requireNotNull(releaseKeyPassword)
+            }
         }
     }
 
@@ -36,9 +46,15 @@ android {
     }
 
     buildTypes {
+        debug {
+            applicationIdSuffix = ".fix"
+            versionNameSuffix = "-fix"
+        }
         release {
             isMinifyEnabled = true
-            signingConfig = signingConfigs.getByName("release")
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
