@@ -34,6 +34,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.devoid.keysync.R
@@ -76,7 +77,7 @@ fun RemoveButton(modifier: Modifier = Modifier, onClick: () -> Unit) {
     ) {
         Icon(
             imageVector = Icons.Default.Close,
-            contentDescription = "Remove",
+            contentDescription = stringResource(R.string.remove),
             tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
         )
     }
@@ -120,7 +121,7 @@ fun IconKey(
 fun BagMapKey(
     modifier: Modifier = Modifier.padding(8.dp),
     borderColor: Color = MaterialTheme.colorScheme.primary,
-    text: String = "ads",
+    text: String = "?",
     onClick: (() -> Unit)?,
     onRemove: () -> Unit
 ) {
@@ -131,7 +132,7 @@ fun BagMapKey(
                 .fillMaxSize()
                 .padding(2.dp),
             painter = painterResource(R.drawable.bag),
-            contentDescription = "pointer",
+            contentDescription = stringResource(R.string.mapping_bag_map),
             colorFilter = ColorFilter.tint(borderColor)
         )
         Text(
@@ -153,7 +154,7 @@ fun CancelKey(
                 .fillMaxSize()
                 .padding(8.dp),
             painter = painterResource(R.drawable.cancel),
-            contentDescription = "pointer",
+            contentDescription = stringResource(R.string.close),
             colorFilter = ColorFilter.tint(borderColor)
         )
     }
@@ -171,7 +172,7 @@ fun MousePointer(
                 .fillMaxSize()
                 .padding(4.dp),
             painter = painterResource(R.drawable.move),
-            contentDescription = "pointer",
+            contentDescription = stringResource(R.string.pointer),
             colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.secondary)
         )
     })
@@ -191,7 +192,7 @@ fun FireKey(
                 .padding(8.dp),
             painter = painterResource(R.drawable.bullet),
             colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface),
-            contentDescription = "fire"
+            contentDescription = stringResource(R.string.mapping_fire)
         )
     }
 
@@ -248,7 +249,7 @@ fun WASDKeysGroup(
         ) {
             Icon(
                 painter = painterResource(R.drawable.pan_zoom),
-                contentDescription = "Scale",
+                contentDescription = stringResource(R.string.scale),
                 tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
             )
         }

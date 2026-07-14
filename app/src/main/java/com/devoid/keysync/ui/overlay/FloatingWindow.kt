@@ -62,6 +62,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionOnScreen
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -98,7 +99,7 @@ fun FloatingBubble(
         if (expanded) {
             Image(
                 imageVector = Icons.Rounded.Done,
-                contentDescription = "",
+                contentDescription = null,
                 modifier = modifier
                     .clip(CircleShape)
                     .background(MaterialTheme.colorScheme.primaryContainer, CircleShape)
@@ -107,7 +108,7 @@ fun FloatingBubble(
         } else {
             Image(
                 painter = painterResource(R.drawable.logo_raw),
-                contentDescription = "",
+                contentDescription = null,
                 modifier = modifier
                     .clip(CircleShape)
                     .background(Color.Black)
@@ -311,7 +312,7 @@ fun ItemsContainer(
                                         modifier = Modifier
                                             .fillMaxSize(),
                                         painter = painterResource(R.drawable.scope),
-                                        contentDescription = "pointer",
+                                        contentDescription = stringResource(R.string.pointer),
                                         colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.inverseSurface)
                                     )
                                 }
@@ -374,7 +375,7 @@ fun MenuItems(
     ) {
         Text(
             modifier = Modifier.padding(top = 4.dp, start = 8.dp),
-            text = "Add keymapping for:",
+            text = stringResource(R.string.add_mapping_component),
             style = MaterialTheme.typography.labelSmall
         )
         LazyVerticalGrid(
@@ -397,7 +398,7 @@ fun MenuItems(
                         Text("A", color = Color.Cyan)
                     }
                     Text(
-                        "Key",
+                        stringResource(R.string.mapping_key),
                         style = TextStyle(fontSize = 8.sp),
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                     )
@@ -421,7 +422,7 @@ fun MenuItems(
                         )
                     }
                     Text(
-                        "Compass",
+                        stringResource(R.string.mapping_movement),
                         style = TextStyle(fontSize = 8.sp),
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                     )
@@ -438,14 +439,14 @@ fun MenuItems(
                                 .fillMaxSize()
                                 .padding(2.dp),
                             painter = painterResource(R.drawable.move),
-                            contentDescription = "Enter Shooting Mode in FPS games Using Right Mouse Click",
+                            contentDescription = stringResource(R.string.aiming_mode_description),
                             colorFilter = ColorFilter.tint(
                                 Color.Cyan
                             )
                         )
                     }
                     Text(
-                        "Shooting Mode",
+                        stringResource(R.string.mapping_aiming_mode),
                         style = TextStyle(fontSize = 8.sp),
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                     )
@@ -462,14 +463,14 @@ fun MenuItems(
                                 .fillMaxSize()
                                 .padding(4.dp),
                             painter = painterResource(R.drawable.bullet),
-                            contentDescription = "Fire In FPS Games Using Left Mouse Click",
+                            contentDescription = stringResource(R.string.fire_description),
                             colorFilter = ColorFilter.tint(
                                 Color.Cyan
                             )
                         )
                     }
                     Text(
-                        "Fire",
+                        stringResource(R.string.mapping_fire),
                         style = TextStyle(fontSize = 8.sp),
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                     )
@@ -491,12 +492,12 @@ fun MenuItems(
                                 .fillMaxSize()
                                 .padding(1.dp),
                             painter = painterResource(R.drawable.bag),
-                            contentDescription = "Bag and Map ",
+                            contentDescription = stringResource(R.string.bag_map_description),
                             colorFilter = ColorFilter.tint(Color.Cyan)
                         )
                     }
                     Text(
-                        "Bag and Map",
+                        stringResource(R.string.mapping_bag_map),
                         style = TextStyle(fontSize = 8.sp),
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                     )
@@ -518,12 +519,12 @@ fun MenuItems(
                                 .fillMaxSize()
                                 .padding(4.dp),
                             painter = painterResource(R.drawable.scope),
-                            contentDescription = "Scope",
+                            contentDescription = stringResource(R.string.scope_description),
                             colorFilter = ColorFilter.tint(Color.Cyan)
                         )
                     }
                     Text(
-                        "Scope",
+                        stringResource(R.string.mapping_scope),
                         style = TextStyle(fontSize = 8.sp),
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                     )
@@ -555,7 +556,7 @@ fun SettingsLayout(
     ) {
         Row {
             Text(
-                text = "Pointer Sensitivity: ",
+                text = stringResource(R.string.pointer_sensitivity),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f)
             )
@@ -576,7 +577,7 @@ fun SettingsLayout(
         )
         Row {
             Text(
-                text = "Overlay Opacity: ",
+                text = stringResource(R.string.overlay_opacity),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f)
             )
@@ -596,9 +597,12 @@ fun SettingsLayout(
         )
         HorizontalDivider()
         TextButton(onClick = onAdvancedSettingsClick) {
-            Icon(Icons.Rounded.Settings, contentDescription = "Advanced Settings")
+            Icon(
+                Icons.Rounded.Settings,
+                contentDescription = stringResource(R.string.advanced_settings)
+            )
             Text(
-                "Advanced Settings",
+                stringResource(R.string.advanced_settings),
                 modifier = Modifier.fillMaxWidth(),
                 textAlign = TextAlign.Center,
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
@@ -607,11 +611,11 @@ fun SettingsLayout(
         TextButton(onClick = onCloseOverlayClick) {
             Icon(
                 Icons.AutoMirrored.Rounded.ExitToApp,
-                contentDescription = "Close",
+                contentDescription = stringResource(R.string.close),
                 tint = MaterialTheme.colorScheme.tertiary
             )
             Text(
-                "Close Overlay",
+                stringResource(R.string.close_overlay),
                 modifier = Modifier.fillMaxWidth(),
                 textAlign = TextAlign.Center,
                 color = MaterialTheme.colorScheme.tertiary,

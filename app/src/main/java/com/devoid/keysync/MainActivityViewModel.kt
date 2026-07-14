@@ -14,6 +14,8 @@ import android.os.IBinder
 import android.os.Looper
 import android.util.Log
 import android.view.InputDevice
+import androidx.appcompat.content.res.AppCompatResources
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.devoid.keysync.data.local.DataStoreManager
@@ -135,7 +137,8 @@ class MainActivityViewModel @Inject constructor(
             val packageInfo = context.packageManager.getApplicationInfo(packageName, 0)
             return context.packageManager.getApplicationLabel(packageInfo).toString()
         }catch (e:Exception){
-            return "Not found"
+            return ContextCompat.getContextForLanguage(context)
+                .getString(R.string.app_not_found)
         }
     }
 
@@ -182,19 +185,22 @@ class MainActivityViewModel @Inject constructor(
 
     private fun getDeviceName(inputDevice: InputDevice): String {
         return inputDevice.name.takeIf { name -> name.isNotEmpty() } ?: when (inputDevice.sources) {
-            InputDevice.SOURCE_MOUSE -> "Mouse"
-            InputDevice.SOURCE_KEYBOARD -> "Keyboard"
-            else -> "Unknown Device"
+            InputDevice.SOURCE_MOUSE -> localizedString(R.string.device_mouse)
+            InputDevice.SOURCE_KEYBOARD -> localizedString(R.string.device_keyboard)
+            else -> localizedString(R.string.device_unknown)
         }
 
     }
+
+    private fun localizedString(resourceId: Int): String =
+        ContextCompat.getContextForLanguage(context).getString(resourceId)
 
     suspend fun getPackageIcon(packageName: String): Drawable {
         return withContext(Dispatchers.IO) {
             try {
                 return@withContext   context.packageManager.getApplicationIcon(packageName)
             }catch (e:Exception){
-                return@withContext context.getDrawable(R.drawable.apk_document)!!
+                return@withContext AppCompatResources.getDrawable(context, R.drawable.apk_document)!!
             }
         }
     }

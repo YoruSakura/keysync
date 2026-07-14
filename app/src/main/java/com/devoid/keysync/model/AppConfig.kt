@@ -13,6 +13,7 @@ data class AppConfig(
     val buttonScale: Float,
     val deleteDataOnRemove: Boolean = Default.deleteDataOnRemove,
     val themePreference: ThemePreference = Default.themePreference,
+    val languagePreference: LanguagePreference = Default.languagePreference,
     val cancellableTouchMode: TouchMode = Default.cancellableTouchMode,
     val normalBtnTouchMode: TouchMode = Default.normalBtnTouchMode,
 ) {
@@ -24,6 +25,7 @@ data class AppConfig(
             buttonScale = 1f,
             deleteDataOnRemove = false,
             themePreference = ThemePreference.SYSTEM_DYNAMIC,
+            languagePreference = LanguagePreference.SYSTEM,
             cancellableTouchMode = TouchMode.TAP,
             normalBtnTouchMode = TouchMode.TAP
         )

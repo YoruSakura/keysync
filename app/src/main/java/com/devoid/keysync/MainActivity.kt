@@ -6,10 +6,10 @@ import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.widget.Toast
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -40,6 +40,7 @@ import com.devoid.keysync.ui.AboutScreen
 import com.devoid.keysync.ui.MainScreen
 import com.devoid.keysync.ui.SettingsScreen
 import com.devoid.keysync.ui.theme.KeySyncTheme
+import com.devoid.keysync.util.applyAppLanguage
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -48,7 +49,7 @@ import rikka.shizuku.Shizuku
 import rikka.shizuku.ShizukuProvider
 
 @AndroidEntryPoint
-class MainActivity : ComponentActivity() {
+class MainActivity : AppCompatActivity() {
 
     companion object {
         val INTENT_ACTION_SETTINGS = "navigateToSettings"
@@ -130,13 +131,18 @@ class MainActivity : ComponentActivity() {
                             onNavigateBack = navController::popBackStack,
                             onNavigateAbout = { navController.navigate(route = AboutScreen) },
                             onSave = {
+                                val languageChanged =
+                                    it.languagePreference != viewModel.appConfig.value.languagePreference
                                 viewModel.saveKeyConfig(it)
                                 Toast.makeText(
                                     this@MainActivity,
-                                    "Saved Successfully.",
+                                    getString(R.string.saved_successfully),
                                     Toast.LENGTH_SHORT
                                 ).show()
                                 navController.navigate(route = MainScreen)
+                                if (languageChanged) {
+                                    applyAppLanguage(it.languagePreference)
+                                }
                             })
                     }
                     composable<AboutScreen> {
@@ -187,7 +193,7 @@ class MainActivity : ComponentActivity() {
         when (uiState) {
             UiState.ShizukuNotRunning -> {
                 scope.launch {
-                    snackbarHostState.showSnackbar("Please start Shizuku Service first.")
+                    snackbarHostState.showSnackbar(getString(R.string.shizuku_not_running))
                 }
                 return false
             }
@@ -197,8 +203,8 @@ class MainActivity : ComponentActivity() {
                     scope.launch {
                         val result = snackbarHostState
                             .showSnackbar(
-                                message = "Please grant permissions in settings!",
-                                actionLabel = "Settings",
+                                message = getString(R.string.grant_permissions),
+                                actionLabel = getString(R.string.open_settings),
                                 duration = SnackbarDuration.Short
                             )
                         if (result == SnackbarResult.ActionPerformed) {
@@ -219,8 +225,8 @@ class MainActivity : ComponentActivity() {
                     scope.launch {
                         val result = snackbarHostState
                             .showSnackbar(
-                                message = "Please grant permissions in settings!",
-                                actionLabel = "Settings",
+                                message = getString(R.string.grant_permissions),
+                                actionLabel = getString(R.string.open_settings),
                                 duration = SnackbarDuration.Short
                             )
                         when (result) {

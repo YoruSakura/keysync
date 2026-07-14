@@ -70,6 +70,8 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -77,6 +79,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.devoid.keysync.MainActivityViewModel
+import com.devoid.keysync.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -245,7 +248,7 @@ fun MainScreen(
                 primaryContent = {
                     Row {
                         Text(
-                            "Connected Devices:",
+                            stringResource(R.string.connected_devices),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Medium,
                             color = MaterialTheme.colorScheme.secondary
@@ -257,7 +260,11 @@ fun MainScreen(
                         )
                         Text(
                             modifier = Modifier.padding(end = 16.dp),
-                            text = "${connectedDevices.size} Devices",
+                            text = pluralStringResource(
+                                R.plurals.device_count,
+                                connectedDevices.size,
+                                connectedDevices.size
+                            ),
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.5f)
                         )
@@ -291,7 +298,7 @@ fun MainScreen(
                 secondaryContent = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            "Selected: ${selectedPackages.size}",
+                            stringResource(R.string.selected_count, selectedPackages.size),
                             style = MaterialTheme.typography.titleMedium
                         )
                         Spacer(
@@ -309,7 +316,7 @@ fun MainScreen(
                                     selectedPackages.clear()
                                 }
                                 .padding(4.dp),
-                            contentDescription = "Delete Selected Items",
+                            contentDescription = stringResource(R.string.delete_selected_items),
                             tint = MaterialTheme.colorScheme.tertiary)
                     }
                 }) {
@@ -335,7 +342,7 @@ fun MainScreen(
                 IconButton(onClick = onNavigateToSettings) {
                     Icon(
                         Icons.Rounded.Settings,
-                        contentDescription = "Advanced Setting"
+                        contentDescription = stringResource(R.string.advanced_settings)
                     )
                 }
 
@@ -344,7 +351,7 @@ fun MainScreen(
                 FloatingActionButton(onClick = {
                     isBottomSheetVisible = true
                 }) {
-                    Icon(Icons.Rounded.Add, contentDescription = "Add app")
+                    Icon(Icons.Rounded.Add, contentDescription = stringResource(R.string.add_app))
                 }
             })
         }
@@ -399,7 +406,13 @@ fun MainScreen(
                     if (showBottomSheetContent) {
                         installedPackages?.let {
                             Column {
-                                Text(modifier=Modifier.padding(horizontal = 16.dp).padding(bottom = 16.dp),text = "Add Games:", style = MaterialTheme.typography.titleLarge)
+                                Text(
+                                    modifier = Modifier
+                                        .padding(horizontal = 16.dp)
+                                        .padding(bottom = 16.dp),
+                                    text = stringResource(R.string.add_games),
+                                    style = MaterialTheme.typography.titleLarge
+                                )
                                 PackagesLayout(
                                     packages = it,
                                     viewModel = viewModel,

@@ -47,15 +47,17 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.constraintlayout.compose.ConstraintLayout
+import com.devoid.keysync.R
 import com.devoid.keysync.model.AppConfig
+import com.devoid.keysync.model.LanguagePreference
 import com.devoid.keysync.model.ThemePreference
 import com.devoid.keysync.model.TouchMode
-import com.devoid.keysync.util.capitalizeFirst
 import com.devoid.keysync.util.keyCodeToString
 import kotlin.math.roundToInt
 
@@ -70,24 +72,34 @@ fun SettingsScreen(
     onNavigateAbout: () -> Unit = {}
 ) {
     var newConfig by remember { mutableStateOf(appConfig) }
+    val unknownKey = stringResource(R.string.unknown_key)
+    val leftMouseButton = stringResource(R.string.left_mouse_button)
+    val rightMouseButton = stringResource(R.string.right_mouse_button)
+    val middleMouseButton = stringResource(R.string.middle_mouse_button)
+    fun Int.localizedKeyName() = keyCodeToString(
+        unknownLabel = unknownKey,
+        leftMouseButtonLabel = leftMouseButton,
+        rightMouseButtonLabel = rightMouseButton,
+        middleMouseButtonLabel = middleMouseButton
+    )
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
                 title = {
-                    Text(text = "Settings")
+                    Text(text = stringResource(R.string.settings_title))
                 },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(
                             Icons.AutoMirrored.Rounded.KeyboardArrowLeft,
-                            contentDescription = "Back"
+                            contentDescription = stringResource(R.string.back)
                         )
                     }
                 }, actions = {
                     Button(modifier = Modifier.padding(end = 8.dp), enabled = newConfig != appConfig, onClick = {
                         onSave(newConfig)
                     }) {
-                        Text("Save")
+                        Text(stringResource(R.string.save))
                     }
                 })
         }
@@ -106,24 +118,24 @@ fun SettingsScreen(
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         Text(
-                            "Key Configuration",
+                            stringResource(R.string.key_configuration),
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Medium,
                             color = MaterialTheme.colorScheme.primary
                         )
                         Row {
-                            KeyConfigTextField(title = "Toggle Shooting Mode:", value = newConfig.shootingModeKeyCode.keyCodeToString()) {
+                            KeyConfigTextField(title = stringResource(R.string.toggle_aiming_mode), value = newConfig.shootingModeKeyCode.localizedKeyName()) {
                                 newConfig=newConfig.copy(shootingModeKeyCode = it.nativeKeyEvent.keyCode)
                                 return@KeyConfigTextField true
                             }
                         }
                         HorizontalDivider()
-                        KeyConfigTextField(title = "Fire:", value = newConfig.fireKeyCode.keyCodeToString()) {
+                        KeyConfigTextField(title = stringResource(R.string.fire_action), value = newConfig.fireKeyCode.localizedKeyName()) {
                             newConfig=newConfig.copy(fireKeyCode = it.nativeKeyEvent.keyCode)
                             return@KeyConfigTextField true
                         }
                         HorizontalDivider()
-                        KeyConfigTextField(title = "Scope:", value = newConfig.scopeKeyCode.keyCodeToString()) {
+                        KeyConfigTextField(title = stringResource(R.string.scope_action), value = newConfig.scopeKeyCode.localizedKeyName()) {
                             newConfig=newConfig.copy(scopeKeyCode = it.nativeKeyEvent.keyCode)
                             return@KeyConfigTextField true
                         }
@@ -135,7 +147,7 @@ fun SettingsScreen(
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = "Button Size",
+                                text = stringResource(R.string.mapped_button_size),
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .weight(1f),
@@ -162,14 +174,14 @@ fun SettingsScreen(
                                 .weight(1f)
                         ) {
                             Text(
-                                "Delete data",
+                                stringResource(R.string.delete_mapping_data),
                                 style = MaterialTheme.typography.titleLarge,
                                 fontWeight = FontWeight.Medium,
                                 color = MaterialTheme.colorScheme.primary
                             )
                             Text(
                                 modifier = Modifier.padding(top = 8.dp),
-                                text = "Delete Keymapping for removed apps",
+                                text = stringResource(R.string.delete_mapping_data_description),
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -197,7 +209,7 @@ fun SettingsScreen(
                             scopeBody,
                             scopeSelector) = createRefs()
                         Text(
-                            "Touch Mode",
+                            stringResource(R.string.touch_behavior),
                             modifier = Modifier.constrainAs(title) {
                                 top.linkTo(parent.top)
                                 start.linkTo(parent.start)
@@ -207,7 +219,7 @@ fun SettingsScreen(
                             color = MaterialTheme.colorScheme.primary
                         )
                         Text(
-                            "Cancelable Button",
+                            stringResource(R.string.cancelable_button),
                             modifier = Modifier
                                 .constrainAs(cancelTitle) {
                                     top.linkTo(title.bottom)
@@ -221,7 +233,7 @@ fun SettingsScreen(
                                     top.linkTo(cancelTitle.bottom)
                                 }
                                 .padding(top = 8.dp),
-                            text = "Touch behaviour for cancelable buttons",
+                            text = stringResource(R.string.cancelable_button_description),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -237,7 +249,7 @@ fun SettingsScreen(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 Text(
-                                    newConfig.cancellableTouchMode.name.capitalizeFirst(),
+                                    newConfig.cancellableTouchMode.localizedName(),
                                     style = MaterialTheme.typography.titleMedium
                                 )
                                 Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = null)
@@ -247,7 +259,7 @@ fun SettingsScreen(
                                 onDismissRequest = { cancellableDropDownExpanded = false }) {
                                 TouchMode.entries.forEach {
                                     DropdownMenuItem(
-                                        text = { Text(it.name.capitalizeFirst()) },
+                                        text = { Text(it.localizedName()) },
                                         onClick = {
                                             newConfig = newConfig.copy(cancellableTouchMode = it)
                                             cancellableDropDownExpanded = false
@@ -262,7 +274,7 @@ fun SettingsScreen(
                                 }
                                 .padding(top = 8.dp))
                         Text(
-                            "Scope",
+                            stringResource(R.string.normal_buttons),
                             modifier = Modifier
                                 .constrainAs(scopeTitle) {
                                     top.linkTo(divider1.bottom)
@@ -276,7 +288,7 @@ fun SettingsScreen(
                                     top.linkTo(scopeTitle.bottom)
                                 }
                                 .padding(top = 8.dp),
-                            text = "Touch behaviour for Scope button",
+                            text = stringResource(R.string.normal_buttons_description),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -292,7 +304,7 @@ fun SettingsScreen(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 Text(
-                                    newConfig.normalBtnTouchMode.name.capitalizeFirst(),
+                                    newConfig.normalBtnTouchMode.localizedName(),
                                     style = MaterialTheme.typography.titleMedium
                                 )
                                 Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = null)
@@ -302,7 +314,7 @@ fun SettingsScreen(
                                 onDismissRequest = { scopeDropDownExpanded = false }) {
                                 TouchMode.entries.forEach {
                                     DropdownMenuItem(
-                                        text = { Text(it.name.capitalizeFirst()) },
+                                        text = { Text(it.localizedName()) },
                                         onClick = {
                                             newConfig = newConfig.copy(normalBtnTouchMode = it)
                                             scopeDropDownExpanded = false
@@ -327,7 +339,7 @@ fun SettingsScreen(
                                 .weight(1f)
                         ) {
                             Text(
-                                "Theme",
+                                stringResource(R.string.theme),
                                 style = MaterialTheme.typography.titleLarge,
                                 fontWeight = FontWeight.Medium,
                                 color = MaterialTheme.colorScheme.primary,
@@ -335,7 +347,7 @@ fun SettingsScreen(
                             )
                             Text(
                                 modifier = Modifier.padding(top = 8.dp),
-                                text = "Set theme preference for this app",
+                                text = stringResource(R.string.theme_description),
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -348,7 +360,7 @@ fun SettingsScreen(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 Text(
-                                    newConfig.themePreference.name.capitalizeFirst(),
+                                    newConfig.themePreference.localizedName(),
                                     style = MaterialTheme.typography.titleMedium
                                 )
                                 Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = null)
@@ -358,7 +370,7 @@ fun SettingsScreen(
                                 onDismissRequest = { dropDownExpanded = false }) {
                                 ThemePreference.entries.forEach {
                                     DropdownMenuItem(
-                                        text = { Text(it.name.capitalizeFirst()) },
+                                        text = { Text(it.localizedName()) },
                                         onClick = {
                                             newConfig = newConfig.copy(themePreference = it)
                                             dropDownExpanded = false
@@ -367,6 +379,61 @@ fun SettingsScreen(
                             }
                         }
 
+                    }
+                }
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    var languageDropDownExpanded by remember { mutableStateOf(false) }
+                    Row(
+                        modifier = Modifier.padding(vertical = 8.dp, horizontal = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
+                        ) {
+                            Text(
+                                stringResource(R.string.language),
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.primary,
+                                maxLines = 1
+                            )
+                            Text(
+                                modifier = Modifier.padding(top = 8.dp),
+                                text = stringResource(R.string.language_description),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        OutlinedCard(onClick = { languageDropDownExpanded = true }) {
+                            Row(
+                                modifier = Modifier
+                                    .padding(8.dp)
+                                    .widthIn(min = 60.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    newConfig.languagePreference.localizedName(),
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                                Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = null)
+                            }
+                            DropdownMenu(
+                                expanded = languageDropDownExpanded,
+                                onDismissRequest = { languageDropDownExpanded = false }
+                            ) {
+                                LanguagePreference.entries.forEach {
+                                    DropdownMenuItem(
+                                        text = { Text(it.localizedName()) },
+                                        onClick = {
+                                            newConfig = newConfig.copy(languagePreference = it)
+                                            languageDropDownExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
                 FilledTonalButton(modifier = Modifier.fillMaxWidth(), onClick = {
@@ -379,7 +446,7 @@ fun SettingsScreen(
                         Icon(Icons.Rounded.Refresh, contentDescription = null)
                         Text(
                             modifier = Modifier.padding(start = 16.dp),
-                            text = "Reset To Defaults",
+                            text = stringResource(R.string.reset_to_defaults),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold
                         )
@@ -393,7 +460,7 @@ fun SettingsScreen(
                         Icon(Icons.Rounded.Info, contentDescription = null)
                         Text(
                             modifier = Modifier.padding(start = 16.dp),
-                            text = "About",
+                            text = stringResource(R.string.about),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold
                         )
@@ -403,6 +470,34 @@ fun SettingsScreen(
         }
     }
 }
+
+@Composable
+private fun TouchMode.localizedName(): String = stringResource(
+    when (this) {
+        TouchMode.TAP -> R.string.touch_mode_tap
+        TouchMode.HOLD -> R.string.touch_mode_hold
+        TouchMode.MIXED -> R.string.touch_mode_mixed
+    }
+)
+
+@Composable
+private fun ThemePreference.localizedName(): String = stringResource(
+    when (this) {
+        ThemePreference.DARK -> R.string.theme_dark
+        ThemePreference.LIGHT -> R.string.theme_light
+        ThemePreference.SYSTEM -> R.string.theme_system
+        ThemePreference.SYSTEM_DYNAMIC -> R.string.theme_system_dynamic
+    }
+)
+
+@Composable
+private fun LanguagePreference.localizedName(): String = stringResource(
+    when (this) {
+        LanguagePreference.SYSTEM -> R.string.language_system
+        LanguagePreference.SIMPLIFIED_CHINESE -> R.string.language_simplified_chinese
+        LanguagePreference.ENGLISH -> R.string.language_english
+    }
+)
 
 @Composable
 fun KeyConfigTextField(

@@ -42,6 +42,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -96,9 +97,10 @@ class FloatingBubbleService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         _isRunning.value = true
+        val localizedContext = ContextCompat.getContextForLanguage(this)
         val channel = NotificationChannel(
             "channel1",
-            "KeySync Overlay Service",
+            localizedContext.getString(R.string.overlay_service_channel),
             NotificationManager.IMPORTANCE_LOW
         )
         val launchedPackageName = intent?.getStringExtra(INTENT_EXTRA_PACAKAGE)
@@ -108,14 +110,12 @@ class FloatingBubbleService : Service() {
         val notificationManager = getSystemService(NotificationManager::class.java)
         notificationManager.createNotificationChannel(channel)
         val notification = NotificationCompat.Builder(this, "channel1").apply {
-            setContentTitle(ContextCompat.getString(baseContext, R.string.app_name))
+            setContentTitle(localizedContext.getString(R.string.app_name))
             setContentText(
-                "${
-                    ContextCompat.getString(
-                        baseContext,
-                        R.string.app_name
-                    )
-                } Overlay service is running"
+                localizedContext.getString(
+                    R.string.overlay_service_running,
+                    localizedContext.getString(R.string.app_name)
+                )
             )
         }.build()
         startForeground(1, notification)
@@ -198,7 +198,7 @@ class FloatingBubbleService : Service() {
         onCLick: () -> Unit,
         onAddItem: (DraggableItemType) -> Unit
     ): ComposeView {
-        val composeView = ComposeView(this)
+        val composeView = ComposeView(ContextCompat.getContextForLanguage(this))
         composeView.setContent {
             FloatingBubbleLayout(
                 onAddItem = onAddItem,
@@ -214,7 +214,7 @@ class FloatingBubbleService : Service() {
     private fun getItemsContainerView(
         onRemove: (Int) -> Unit
     ): ComposeView {
-        val composeView = ComposeView(this)
+        val composeView = ComposeView(ContextCompat.getContextForLanguage(this))
         composeView.layoutParams = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.MATCH_PARENT
@@ -239,7 +239,7 @@ class FloatingBubbleService : Service() {
                                 }
                             },
                             painter = painterResource(R.drawable.mouse),
-                            contentDescription = "mouse pointer"
+                            contentDescription = stringResource(R.string.mouse_pointer)
                         )
                     }
                     if (!isBubbleExpanded && itemsContainerOpacity == 0f)
@@ -376,7 +376,7 @@ class FloatingBubbleService : Service() {
                         }) {
                             Icon(
                                 imageVector = Icons.Rounded.Add,
-                                contentDescription = "Add Item"
+                                contentDescription = stringResource(R.string.add_item)
                             )
                         }
 
@@ -386,7 +386,7 @@ class FloatingBubbleService : Service() {
                         }) {
                             Icon(
                                 imageVector = Icons.Rounded.Settings,
-                                contentDescription = "Settings",
+                                contentDescription = stringResource(R.string.settings_title),
                                 tint = MaterialTheme.colorScheme.onSurface
                             )
                         }
@@ -483,7 +483,7 @@ fun PreviewFloatingBubble() {
                     }) {
                         Icon(
                             imageVector = Icons.Rounded.Add,
-                            contentDescription = "Add Item"
+                            contentDescription = stringResource(R.string.add_item)
                         )
                     }
 
@@ -491,7 +491,7 @@ fun PreviewFloatingBubble() {
                     }) {
                         Icon(
                             imageVector = Icons.Rounded.Settings,
-                            contentDescription = "Settings",
+                            contentDescription = stringResource(R.string.settings_title),
                             tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
