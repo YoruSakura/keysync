@@ -15,8 +15,6 @@
     <string name="touch_behavior">Touch behavior</string>
     <string name="cancelable_button">Toggleable buttons</string>
     <string name="cancelable_button_description">Touch behavior for buttons such as bag or map that can be pressed again to close</string>
-    <string name="normal_buttons">Regular mapped buttons</string>
-    <string name="normal_buttons_description">Touch behavior for regular key mappings</string>
     <string name="theme">Theme</string>
     <string name="theme_description">Choose the app’s light, dark, or dynamic color theme</string>
     <string name="theme_dark">Dark</string>

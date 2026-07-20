@@ -497,7 +497,9 @@ class EventHandler(
     var appConfig = AppConfig.Default
 
     private var cancelableTouchHandler: MultiModeTouchHandler = MixedModeTouchHandler(eventInjector)
-    private var normalTouchHandler: MultiModeTouchHandler = MixedModeTouchHandler(eventInjector)
+    // Regular mappings always mirror the lifetime of the physical key press.
+    // A quick down/up is a tap; keeping the key down is a long press.
+    private val normalTouchHandler: MultiModeTouchHandler = HoldModeTouchHandler(eventInjector)
 
 
     /* ---------- touch mode ---------- */
@@ -509,21 +511,29 @@ class EventHandler(
             TouchMode.MIXED -> CancelableMixedModeTouchHandler(eventInjector)
         }
     }
-    fun setNormalBtnTouchMode(mode: TouchMode) {
-        normalTouchHandler = when (mode) {
-            TouchMode.TAP -> TapModeTouchHandler(eventInjector)
-            TouchMode.HOLD -> HoldModeTouchHandler(eventInjector)
-            TouchMode.MIXED -> MixedModeTouchHandler(eventInjector)
-        }
-    }
-
-
-
     private fun setShootingMode(enabled: Boolean) {
         if (shootingMode == enabled) return
 
         shootingMode = enabled
         _shootingModeFlow.value = enabled
+    }
+
+    private fun changeShootingMode(enabled: Boolean): Boolean {
+        if (shootingMode == enabled) return true
+
+        val key = appConfig.shootingModeKeyCode
+        val pointerId = pointerIds[key]
+
+        if (enabled) {
+            val mapping = keyMap[key] ?: return false
+            if (pointerId == null) return false
+            setShootingMode(true)
+            eventInjector.injectPointer(pointerId, mapping.position)
+        } else {
+            setShootingMode(false)
+            pointerId?.let(eventInjector::releasePointer)
+        }
+        return true
     }
 
 
@@ -616,6 +626,7 @@ class EventHandler(
 
     private fun handleKeyUp(keyCode: Int, pointerId: Int) {
         keyMap[keyCode]?.let {
+            if (keyCode == appConfig.shootingModeKeyCode) return
             if (it.type == KeymapType.CANCELABLE){
                 val isToggled = cancelToggle[keyCode] ?: false
                 val mapping = if (isToggled) cancelKeyMap[keyCode] ?: return else it
@@ -642,9 +653,8 @@ class EventHandler(
     fun handleMouseButton(button: Int, pressed: Boolean): Boolean {
         val keyCode = mouseButtonToKeyCode(button) ?: return false
         if (keyCode == appConfig.shootingModeKeyCode) {
-            if (!pressed) return false
-            toggleShootingMode()
-            return true
+            if (!pressed) return true
+            return toggleShootingMode()
         }
         val pointerId = pointerIds[keyCode] ?: return false
 
@@ -688,20 +698,17 @@ class EventHandler(
 
     /* ---------- shooting mode ---------- */
 
-    private fun toggleShootingMode() {
-        val newState = !shootingMode
-        setShootingMode(newState)
+    private fun toggleShootingMode(): Boolean = changeShootingMode(!shootingMode)
 
-        val key = appConfig.shootingModeKeyCode
-        val pointerId = pointerIds[key]
-
-        if (pointerId != null) {
-            if (newState)
-                keyMap[key]?.let { eventInjector.injectPointer(pointerId, it.position) }
-            else
-                eventInjector.releasePointer(pointerId)
-        }
+    internal fun pauseForInputCaptureLoss(): Boolean {
+        val shouldResumeShootingMode = shootingMode
+        eventInjector.clear()
+        resetTransientInputState()
+        setShootingMode(false)
+        return shouldResumeShootingMode
     }
+
+    internal fun resumeShootingMode(): Boolean = changeShootingMode(true)
 
 
     private fun simulateNativeClick(
@@ -834,11 +841,21 @@ class EventHandler(
 
     fun clear() {
         eventInjector.clear()
+        resetTransientInputState()
+        setShootingMode(false)
+    }
+
+    fun shutdown() {
+        resetTransientInputState()
+        setShootingMode(false)
+        eventInjector.shutdown()
+    }
+
+    private fun resetTransientInputState() {
         physicalKeysDown.clear()
         normalKeyStates.clear()
         cancelToggle.clear()
         wasdMask = 0
         lastWasdMask = 0
-        setShootingMode(false)
     }
 }

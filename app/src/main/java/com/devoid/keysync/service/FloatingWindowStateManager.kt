@@ -20,6 +20,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.drop
@@ -60,6 +61,7 @@ class FloatingWindowStateManager @Inject constructor(
     val containerItems = _containerItems.asStateFlow()
 
     val isShootingMode = eventHandler.shootingModeFlow
+    private var resumeShootingModeAfterCapture = false
 
     init {
         scope.launch {
@@ -77,7 +79,6 @@ class FloatingWindowStateManager @Inject constructor(
         scope.launch {
             _appConfig.value = dataStoreManager.getKeyConfig(DataStoreManager.KEYS_CONFIG).first()
             eventHandler.setCancelableTouchMode(_appConfig.value.cancellableTouchMode)
-            eventHandler.setNormalBtnTouchMode(_appConfig.value.normalBtnTouchMode)
             eventHandler.appConfig = _appConfig.value
         }
 
@@ -201,12 +202,27 @@ class FloatingWindowStateManager @Inject constructor(
     }
 
     fun clearActivePointers() {
+        resumeShootingModeAfterCapture = false
         eventHandler.clear()
+    }
+
+    fun onInputCaptureInterrupted() {
+        val wasShootingModeActive = eventHandler.pauseForInputCaptureLoss()
+        resumeShootingModeAfterCapture =
+            resumeShootingModeAfterCapture || wasShootingModeActive
+    }
+
+    fun onInputCaptureRestored() {
+        if (!resumeShootingModeAfterCapture) return
+
+        resumeShootingModeAfterCapture = !eventHandler.resumeShootingMode()
     }
 
     fun onDestroy(){
         _isBubbleExpanded.value = false
-        eventHandler.clear()
+        resumeShootingModeAfterCapture = false
+        eventHandler.shutdown()
+        scope.cancel()
     }
 
     @SuppressLint("InternalInsetResource", "DiscouragedApi")

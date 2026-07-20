@@ -8,6 +8,7 @@ import com.devoid.keysync.model.DraggableItemType
 import com.devoid.keysync.model.EventInjector
 import com.devoid.keysync.model.TouchMode
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -77,7 +78,6 @@ class EventHandlerTest {
     fun `using 1 through 4 and Escape cannot suppress another mapped key`() {
         val injector = RecordingEventInjector()
         val handler = EventHandler(injector)
-        handler.setNormalBtnTouchMode(TouchMode.TAP)
 
         val keyCodes = listOf(
             KeyEvent.KEYCODE_1,
@@ -100,9 +100,36 @@ class EventHandlerTest {
         val callsBeforeBack = injector.calls.size
 
         assertTrue(handler.handleKeyEvent(KeyEvent.KEYCODE_BACK, MotionEvent.ACTION_DOWN))
+        assertTrue(handler.handleKeyEvent(KeyEvent.KEYCODE_BACK, MotionEvent.ACTION_UP))
 
         assertEquals(callsBeforeBack + 2, injector.calls.size)
         assertTrue(injector.calls[callsBeforeBack] is RecordingEventInjector.Call.InjectPointer)
+    }
+
+    @Test
+    fun `regular mapping stays touched for the full physical key press`() {
+        val injector = RecordingEventInjector()
+        val handler = EventHandler(injector)
+        handler.updateKeyMapping(
+            listOf(variableKey(1, KeyEvent.KEYCODE_4, Offset(400f, 300f)))
+        )
+
+        assertTrue(handler.handleKeyEvent(KeyEvent.KEYCODE_4, MotionEvent.ACTION_DOWN))
+        assertEquals(
+            listOf(
+                RecordingEventInjector.Call.InjectPointer(
+                    pointerId = 0,
+                    start = Offset(430f, 330f),
+                    end = Offset(460f, 360f)
+                )
+            ),
+            injector.calls
+        )
+
+        // No synthetic release is scheduled: the virtual finger remains down
+        // for however long the physical key remains held.
+        assertTrue(handler.handleKeyEvent(KeyEvent.KEYCODE_4, MotionEvent.ACTION_UP))
+        assertEquals(RecordingEventInjector.Call.ReleasePointer(0), injector.calls.last())
     }
 
     @Test
@@ -140,12 +167,12 @@ class EventHandlerTest {
     fun `right mouse button can trigger an ordinary key mapping`() {
         val injector = RecordingEventInjector()
         val handler = EventHandler(injector)
-        handler.setNormalBtnTouchMode(TouchMode.TAP)
         handler.updateKeyMapping(
             listOf(variableKey(1, KEYCODE_RMC, Offset(600f, 400f)))
         )
 
         assertTrue(handler.handleMouseButton(MotionEvent.BUTTON_SECONDARY, true))
+        assertEquals(1, injector.calls.size)
         assertTrue(handler.handleMouseButton(MotionEvent.BUTTON_SECONDARY, false))
 
         assertEquals(
@@ -222,6 +249,84 @@ class EventHandlerTest {
             ),
             injector.calls.takeLast(3)
         )
+    }
+
+    @Test
+    fun `capture interruption clears stale input and restores aiming`() {
+        val injector = RecordingEventInjector()
+        val handler = EventHandler(injector)
+        handler.updateKeyMapping(
+            listOf(
+                wasdGroup(),
+                DraggableItem.FixedKey(
+                    id = 2,
+                    position = Offset(500f, 200f),
+                    type = DraggableItemType.SHOOTING_MODE,
+                    keyCode = KEYCODE_MMC,
+                    size = 90
+                )
+            )
+        )
+
+        assertTrue(handler.handleKeyEvent(KeyEvent.KEYCODE_W, MotionEvent.ACTION_DOWN))
+        assertTrue(handler.handleMouseButton(MotionEvent.BUTTON_TERTIARY, true))
+        assertTrue(handler.handleMouseButton(MotionEvent.BUTTON_TERTIARY, false))
+
+        assertTrue(handler.pauseForInputCaptureLoss())
+        assertFalse(handler.shootingModeFlow.value)
+        assertEquals(RecordingEventInjector.Call.Clear, injector.calls.last())
+
+        assertTrue(handler.resumeShootingMode())
+        assertTrue(handler.shootingModeFlow.value)
+        assertEquals(
+            RecordingEventInjector.Call.InjectPointer(1, Offset(530f, 230f), null),
+            injector.calls.last()
+        )
+
+        // Key-up may have been lost with window focus. Clearing the physical
+        // key state lets the next down event establish a fresh WASD gesture.
+        assertTrue(handler.handleKeyEvent(KeyEvent.KEYCODE_W, MotionEvent.ACTION_DOWN))
+        assertEquals(
+            RecordingEventInjector.Call.InjectGesture(0, CENTER, NORTH),
+            injector.calls.last()
+        )
+    }
+
+    @Test
+    fun `shooting mode key release cannot release its camera pointer`() {
+        val injector = RecordingEventInjector()
+        val handler = EventHandler(injector)
+        handler.updateKeyMapping(
+            listOf(
+                DraggableItem.FixedKey(
+                    id = 1,
+                    position = Offset(500f, 200f),
+                    type = DraggableItemType.SHOOTING_MODE,
+                    keyCode = KEYCODE_MMC,
+                    size = 90
+                )
+            )
+        )
+
+        assertTrue(handler.handleKeyEvent(KEYCODE_MMC, MotionEvent.ACTION_DOWN))
+        assertTrue(handler.handleKeyEvent(KEYCODE_MMC, MotionEvent.ACTION_UP))
+
+        assertTrue(handler.shootingModeFlow.value)
+        assertEquals(
+            listOf(RecordingEventInjector.Call.InjectPointer(0, Offset(530f, 230f), null)),
+            injector.calls
+        )
+    }
+
+    @Test
+    fun `shooting mode cannot enter without a camera mapping`() {
+        val injector = RecordingEventInjector()
+        val handler = EventHandler(injector)
+        handler.updateKeyMapping(emptyList())
+
+        assertFalse(handler.handleMouseButton(MotionEvent.BUTTON_TERTIARY, true))
+        assertFalse(handler.shootingModeFlow.value)
+        assertTrue(injector.calls.isEmpty())
     }
 
     private fun variableKey(id: Int, keyCode: Int, position: Offset) =

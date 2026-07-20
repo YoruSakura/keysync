@@ -15,8 +15,6 @@
     <string name="touch_behavior">触控触发方式</string>
     <string name="cancelable_button">可再次关闭的按钮</string>
     <string name="cancelable_button_description">设置背包、地图等可再次按键关闭的按钮如何模拟触控</string>
-    <string name="normal_buttons">普通映射按钮</string>
-    <string name="normal_buttons_description">设置普通按键映射如何模拟触控</string>
     <string name="theme">外观主题</string>
     <string name="theme_description">设置应用的浅色、深色或动态配色</string>
     <string name="theme_dark">深色</string>

@@ -12,6 +12,7 @@ interface EventInjector {
     fun injectPointer(pointerID: Int,position: Offset)
     fun updatePointerPosition(pointerID: Int, position:Offset)
     fun clear()
+    fun shutdown() = clear()
     fun releasePointer(pointerID: Int)
     suspend fun injected(pointerID: Int):Boolean
 }

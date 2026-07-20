@@ -88,6 +88,8 @@ class FloatingBubbleService : Service() {
         val INTENT_EXTRA_PACAKAGE = "launchedPackageName"
         private val _isRunning = MutableStateFlow(false)
         val isRunning = _isRunning.asStateFlow()
+        private const val CAPTURE_RETRY_DELAY_MILLIS = 100L
+        private const val CAPTURE_WATCHDOG_DELAY_MILLIS = 250L
     }
 
     private val lifecycleOwner = ServiceLifecycleOwner()
@@ -95,8 +97,15 @@ class FloatingBubbleService : Service() {
     private val scope = CoroutineScope(Dispatchers.Main)
     private var containerView: ComposeView? = null
     private var floatingBubbleView: ComposeView? = null
+    private var initialized = false
     private var windowFocusChangeListener: ViewTreeObserver.OnWindowFocusChangeListener? = null
     private val restoreInputCaptureRunnable = Runnable { restoreInputCapture() }
+    private val inputCaptureRecovery by lazy {
+        InputCaptureRecoveryController(
+            onInterrupted = { stateManager.get().onInputCaptureInterrupted() },
+            onRestored = { stateManager.get().onInputCaptureRestored() }
+        )
+    }
 
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -124,11 +133,14 @@ class FloatingBubbleService : Service() {
         }.build()
         startForeground(1, notification)
 
-        if (lifecycleOwner.lifecycle.currentState == Lifecycle.State.INITIALIZED) {
-            lifecycleOwner.performRestore(null)
+        if (!initialized) {
+            if (lifecycleOwner.lifecycle.currentState == Lifecycle.State.INITIALIZED) {
+                lifecycleOwner.performRestore(null)
+            }
+            lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_START)
+            init()
+            initialized = true
         }
-        lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_START)
-        init()
         return START_NOT_STICKY
     }
 
@@ -164,9 +176,11 @@ class FloatingBubbleService : Service() {
             stateManager.get().isBubbleExpanded.collect { expanded ->
                 itemsContainerLP.apply {
                     width = WindowManager.LayoutParams.MATCH_PARENT
-                    height = containerView?.rootView?.height ?: 0
+                    height = WindowManager.LayoutParams.MATCH_PARENT
                 }
                 if (expanded) {
+                    containerView?.removeCallbacks(restoreInputCaptureRunnable)
+                    inputCaptureRecovery.reset()
                     itemsContainerLP.flags =
                         WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
                     stateManager.get().windowManager.updateViewLayout(
@@ -177,6 +191,7 @@ class FloatingBubbleService : Service() {
                     containerView?.releasePointerCapture()
                     stateManager.get().clearActivePointers()
                 } else {
+                    inputCaptureRecovery.reset()
                     itemsContainerLP.flags =
                         WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
                     stateManager.get().windowManager.updateViewLayout(
@@ -193,7 +208,7 @@ class FloatingBubbleService : Service() {
         scheduleInputCaptureRestore(delayMillis = 1000)
     }
 
-    private fun scheduleInputCaptureRestore(delayMillis: Long = 100) {
+    private fun scheduleInputCaptureRestore(delayMillis: Long = CAPTURE_RETRY_DELAY_MILLIS) {
         val view = containerView ?: return
         view.removeCallbacks(restoreInputCaptureRunnable)
         view.postDelayed(restoreInputCaptureRunnable, delayMillis)
@@ -203,31 +218,49 @@ class FloatingBubbleService : Service() {
         val view = containerView ?: return
         if (!view.isAttachedToWindow || stateManager.get().isBubbleExpanded.value) return
 
-        // A touch on the game transfers window focus away from this otherwise
-        // touch-through overlay. Refreshing the layout makes the focusable
-        // overlay eligible again before pointer capture is requested.
-        val focusableFlags =
-            itemsContainerLP.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
-        itemsContainerLP.flags =
-            focusableFlags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-        runCatching {
-            stateManager.get().windowManager.updateViewLayout(view, itemsContainerLP)
-        }
-        itemsContainerLP.flags = focusableFlags
-        runCatching {
-            stateManager.get().windowManager.updateViewLayout(view, itemsContainerLP)
-        }
-        view.clearFocus()
-        view.requestFocus()
-        view.post {
-            if (stateManager.get().isBubbleExpanded.value) return@post
-            if (view.hasWindowFocus()) {
-                view.removeCallbacks(restoreInputCaptureRunnable)
-                if (!view.hasPointerCapture()) view.requestPointerCapture()
+        val hasCompleteCapture =
+            view.hasWindowFocus() && view.hasFocus() && view.hasPointerCapture()
+        if (hasCompleteCapture) {
+            inputCaptureRecovery.reportAvailable()
+            val nextCheck = if (inputCaptureRecovery.isInterrupted()) {
+                CAPTURE_RETRY_DELAY_MILLIS
             } else {
-                scheduleInputCaptureRestore()
+                CAPTURE_WATCHDOG_DELAY_MILLIS
+            }
+            scheduleInputCaptureRestore(nextCheck)
+            return
+        }
+
+        inputCaptureRecovery.reportUnavailable()
+
+        if (!view.hasWindowFocus()) {
+            // A real screen touch transfers focus to the game. Re-register the
+            // touch-through window as focusable before requesting capture again.
+            val focusableFlags =
+                itemsContainerLP.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
+            itemsContainerLP.flags =
+                focusableFlags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+            runCatching {
+                stateManager.get().windowManager.updateViewLayout(view, itemsContainerLP)
+            }.onFailure { Log.w(TAG, "Unable to release overlay focus", it) }
+            itemsContainerLP.flags = focusableFlags
+            runCatching {
+                stateManager.get().windowManager.updateViewLayout(view, itemsContainerLP)
+            }.onFailure { Log.w(TAG, "Unable to restore overlay focusability", it) }
+        }
+
+        if (!view.hasFocus()) view.requestFocus()
+        view.post {
+            if (
+                !stateManager.get().isBubbleExpanded.value &&
+                view.hasWindowFocus() &&
+                !view.hasPointerCapture()
+            ) {
+                runCatching { view.requestPointerCapture() }
+                    .onFailure { Log.w(TAG, "Unable to restore pointer capture", it) }
             }
         }
+        scheduleInputCaptureRestore()
     }
 
 
@@ -297,14 +330,10 @@ class FloatingBubbleService : Service() {
         composeView.isFocusableInTouchMode = true
         val focusChangeListener = ViewTreeObserver.OnWindowFocusChangeListener { hasFocus ->
             if (!stateManager.get().isBubbleExpanded.value) {
-                if (hasFocus) {
-                    composeView.removeCallbacks(restoreInputCaptureRunnable)
-                    composeView.post {
-                        if (!composeView.hasPointerCapture()) composeView.requestPointerCapture()
-                    }
-                } else {
-                    scheduleInputCaptureRestore()
-                }
+                if (!hasFocus) inputCaptureRecovery.reportUnavailable()
+                scheduleInputCaptureRestore(
+                    if (hasFocus) 0L else CAPTURE_RETRY_DELAY_MILLIS
+                )
             }
         }
         windowFocusChangeListener = focusChangeListener
@@ -327,7 +356,9 @@ class FloatingBubbleService : Service() {
 
     override fun onDestroy() {
         _isRunning.value = false
+        initialized = false
         containerView?.removeCallbacks(restoreInputCaptureRunnable)
+        inputCaptureRecovery.reset()
         windowFocusChangeListener?.let { listener ->
             containerView?.viewTreeObserver
                 ?.takeIf { it.isAlive }

@@ -211,7 +211,6 @@ fun SettingsScreen(
                 }
                 Card(modifier = Modifier.fillMaxWidth()) {
                     var cancellableDropDownExpanded by remember { mutableStateOf(false) }
-                    var scopeDropDownExpanded by remember { mutableStateOf(false) }
 
                     ConstraintLayout(
                         Modifier
@@ -221,11 +220,7 @@ fun SettingsScreen(
                         val (title,
                             cancelTitle,
                             cancelBody,
-                            cancelSelector,
-                            divider1,
-                            scopeTitle,
-                            scopeBody,
-                            scopeSelector) = createRefs()
+                            cancelSelector) = createRefs()
                         Text(
                             stringResource(R.string.touch_behavior),
                             modifier = Modifier.constrainAs(title) {
@@ -281,61 +276,6 @@ fun SettingsScreen(
                                         onClick = {
                                             newConfig = newConfig.copy(cancellableTouchMode = it)
                                             cancellableDropDownExpanded = false
-                                        })
-                                }
-                            }
-                        }
-                        HorizontalDivider(
-                            Modifier
-                                .constrainAs(divider1) {
-                                    top.linkTo(cancelBody.bottom)
-                                }
-                                .padding(top = 8.dp))
-                        Text(
-                            stringResource(R.string.normal_buttons),
-                            modifier = Modifier
-                                .constrainAs(scopeTitle) {
-                                    top.linkTo(divider1.bottom)
-                                }
-                                .padding(top = 8.dp),
-                            style = MaterialTheme.typography.titleMedium
-                        )
-                        Text(
-                            modifier = Modifier
-                                .constrainAs(scopeBody) {
-                                    top.linkTo(scopeTitle.bottom)
-                                }
-                                .padding(top = 8.dp),
-                            text = stringResource(R.string.normal_buttons_description),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        OutlinedCard(modifier = Modifier.constrainAs(scopeSelector) {
-                            bottom.linkTo(scopeBody.bottom)
-                            top.linkTo(scopeTitle.top)
-                            end.linkTo(parent.end)
-                        }, onClick = { scopeDropDownExpanded = true }) {
-                            Row(
-                                modifier = Modifier
-                                    .padding(8.dp)
-                                    .widthIn(min = 60.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Text(
-                                    newConfig.normalBtnTouchMode.localizedName(),
-                                    style = MaterialTheme.typography.titleMedium
-                                )
-                                Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = null)
-                            }
-                            DropdownMenu(
-                                expanded = scopeDropDownExpanded,
-                                onDismissRequest = { scopeDropDownExpanded = false }) {
-                                TouchMode.entries.forEach {
-                                    DropdownMenuItem(
-                                        text = { Text(it.localizedName()) },
-                                        onClick = {
-                                            newConfig = newConfig.copy(normalBtnTouchMode = it)
-                                            scopeDropDownExpanded = false
                                         })
                                 }
                             }

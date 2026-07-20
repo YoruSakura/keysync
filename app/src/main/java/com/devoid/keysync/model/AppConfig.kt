@@ -15,6 +15,8 @@ data class AppConfig(
     val themePreference: ThemePreference = Default.themePreference,
     val languagePreference: LanguagePreference = Default.languagePreference,
     val cancellableTouchMode: TouchMode = Default.cancellableTouchMode,
+    // Kept so configurations saved by older versions remain readable.
+    // Regular buttons now always mirror the physical key press duration.
     val normalBtnTouchMode: TouchMode = Default.normalBtnTouchMode,
 ) {
     companion object {
@@ -27,7 +29,7 @@ data class AppConfig(
             themePreference = ThemePreference.SYSTEM_DYNAMIC,
             languagePreference = LanguagePreference.SYSTEM,
             cancellableTouchMode = TouchMode.TAP,
-            normalBtnTouchMode = TouchMode.TAP
+            normalBtnTouchMode = TouchMode.HOLD
         )
     }
 

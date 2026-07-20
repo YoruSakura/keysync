@@ -20,6 +20,7 @@ class AppConfigLocalizationTest {
         val config = Json.decodeFromString<AppConfig>(legacyConfig)
 
         assertEquals(LanguagePreference.SYSTEM, config.languagePreference)
+        assertEquals(TouchMode.HOLD, config.normalBtnTouchMode)
     }
 
     @Test

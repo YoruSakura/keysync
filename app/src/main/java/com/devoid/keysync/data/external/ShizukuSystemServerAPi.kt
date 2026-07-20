@@ -35,13 +35,35 @@ class ShizukuSystemServerAPi {
     fun getEventHandler(): EventHandler {
         if (injectInputEventFunction==null||inputManagerInstance==null){
             throw IllegalStateException("Input manager Service not connected")
-        }
+       }
        return EventHandler(object : EventInjectorImpl(){
            override fun inject(event: InputEvent) {
 //               Log.d(TAG, "inject: injecting: $event")
-               injectInputEventFunction?.invoke(inputManagerInstance, event, 1)
+               injectWithReconnect(event)
            }
        })
+    }
+
+    @Synchronized
+    private fun injectWithReconnect(event: InputEvent) {
+        val firstAttempt = runCatching { invokeInputEvent(event) }
+        if (firstAttempt.isSuccess) return
+
+        Log.w(TAG, "Input injection failed; reconnecting to InputManager", firstAttempt.exceptionOrNull())
+        runCatching {
+            injectInputEventFunction = getInputApi()
+            invokeInputEvent(event)
+        }.onFailure { error ->
+            Log.e(TAG, "Input injection retry failed", error)
+        }
+    }
+
+    private fun invokeInputEvent(event: InputEvent) {
+        val function = injectInputEventFunction
+            ?: throw IllegalStateException("Input injection function is unavailable")
+        val inputManager = inputManagerInstance
+            ?: throw IllegalStateException("Input manager service is unavailable")
+        function.invoke(inputManager, event, 1)
     }
 
 

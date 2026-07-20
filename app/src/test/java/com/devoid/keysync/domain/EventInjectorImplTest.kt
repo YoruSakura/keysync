@@ -4,6 +4,7 @@ import android.view.InputEvent
 import android.view.MotionEvent
 import androidx.compose.ui.geometry.Offset
 import com.devoid.keysync.model.EventManager
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -82,6 +83,32 @@ class EventInjectorImplTest {
             injector.close()
         }
     }
+
+    @Test
+    fun `mouse move bursts are coalesced and discarded across pointer release`() = runBlocking {
+        val manager = RecordingEventManager()
+        val injector = TestEventInjector(manager)
+        val addPointerGate = CompletableDeferred<Unit>()
+        manager.addPointerGate = addPointerGate
+
+        try {
+            injector.injectPointer(1, Offset(500f, 200f))
+            repeat(500) {
+                injector.updatePointerPosition(1, Offset(1f, -1f))
+            }
+            injector.releasePointer(1)
+            injector.injectPointer(1, Offset(500f, 200f))
+            injector.updatePointerPosition(1, Offset(4f, -2f))
+
+            addPointerGate.complete(Unit)
+            injector.awaitIdle()
+
+            assertEquals(listOf(1), manager.activePointerIds())
+            assertEquals(1, manager.calls.count { it == "event:${MotionEvent.ACTION_MOVE}" })
+        } finally {
+            injector.close()
+        }
+    }
 }
 
 private class TestEventInjector(eventManager: EventManager) :
@@ -91,9 +118,11 @@ private class TestEventInjector(eventManager: EventManager) :
 
 private class RecordingEventManager : EventManager {
     val calls = mutableListOf<String>()
+    var addPointerGate: CompletableDeferred<Unit>? = null
     private val activePointers = mutableListOf<Int>()
 
     override suspend fun addPointer(id: Int, x: Float, y: Float): Int {
+        addPointerGate?.await()
         calls += "add:$id"
         if (id in activePointers) return -2
         activePointers += id
