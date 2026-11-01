@@ -19,6 +19,7 @@ coilCompose = "3.0.4"
 navigationCompose = "2.7.7"
 navigationComposeVersion = "2.8.6"
 coreSplashscreen = "1.0.1"
+libsu = "6.0.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -46,6 +47,7 @@ coil-compose = { group = "io.coil-kt.coil3", name = "coil-compose", version.ref 
 androidx-navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigationCompose" }
 navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigationComposeVersion" }
 androidx-core-splashscreen = { group = "androidx.core", name = "core-splashscreen", version.ref = "coreSplashscreen" }
+libsu-service = { group = "com.github.topjohnwu.libsu", name = "service", version.ref = "libsu" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

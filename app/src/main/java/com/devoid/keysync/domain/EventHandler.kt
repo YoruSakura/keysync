@@ -444,9 +444,45 @@ private const val MASK_A = 1 shl 1
 private const val MASK_S = 1 shl 2
 private const val MASK_D = 1 shl 3
 
-const val KEYCODE_LMC = 1 shl 6//mouse left click
-const val KEYCODE_RMC = 1 shl 7//mouse right click
-const val KEYCODE_MMC = 1 shl 8//mouse middle click
+// Synthetic mouse codes must never overlap Android KeyEvent codes. Earlier
+// versions used 64/128/256, which are real EXPLORER/MEDIA_CLOSE/TV_CONTENTS_MENU
+// key codes and could make a physical key corrupt mouse mapping state.
+const val KEYCODE_LMC = -1002//mouse left click
+const val KEYCODE_RMC = -1003//mouse right click
+const val KEYCODE_MMC = -1004//mouse middle click
+
+internal fun migrateLegacyMouseKeyCode(keyCode: Int): Int = when (keyCode) {
+    LEGACY_BITMASK_LMC, LEGACY_ORIGINAL_LMC -> KEYCODE_LMC
+    LEGACY_BITMASK_RMC, LEGACY_ORIGINAL_RMC -> KEYCODE_RMC
+    LEGACY_BITMASK_MMC, LEGACY_ORIGINAL_MMC -> KEYCODE_MMC
+    else -> keyCode
+}
+
+internal fun AppConfig.migrateLegacyMouseKeyCodes(): AppConfig = copy(
+    shootingModeKeyCode = migrateLegacyMouseKeyCode(shootingModeKeyCode),
+    fireKeyCode = migrateLegacyMouseKeyCode(fireKeyCode),
+    scopeKeyCode = migrateLegacyMouseKeyCode(scopeKeyCode)
+)
+
+internal fun DraggableItem.migrateLegacyMouseKeyCode(): DraggableItem = when (this) {
+    is DraggableItem.VariableKey -> copy(
+        keyCode = keyCode?.let(::migrateLegacyMouseKeyCode)
+    )
+    is DraggableItem.FixedKey -> copy(
+        keyCode = migrateLegacyMouseKeyCode(keyCode)
+    )
+    is DraggableItem.CancelableKey -> copy(
+        keyCode = keyCode?.let(::migrateLegacyMouseKeyCode)
+    )
+    is DraggableItem.WASDGroup -> this
+}
+
+private const val LEGACY_BITMASK_LMC = 1 shl 6
+private const val LEGACY_BITMASK_RMC = 1 shl 7
+private const val LEGACY_BITMASK_MMC = 1 shl 8
+private const val LEGACY_ORIGINAL_LMC = 1002
+private const val LEGACY_ORIGINAL_RMC = 1003
+private const val LEGACY_ORIGINAL_MMC = 1004
 
 fun mouseButtonToKeyCode(button: Int): Int? = when (button) {
     MotionEvent.BUTTON_PRIMARY -> KEYCODE_LMC
@@ -470,6 +506,8 @@ private fun keyToWasdMask(keyCode: Int): Int = when (keyCode) {
 class EventHandler(
     private val eventInjector: EventInjector
 ) {
+    val usesTouchCore = eventInjector is com.devoid.keysync.domain.touch.TouchCoreEventInjector
+    private var cameraController: com.devoid.keysync.domain.touch.CameraGestureController? = null
 
     /* ---------- state ---------- */
 
@@ -477,6 +515,7 @@ class EventHandler(
     private val cancelKeyMap = HashMap<Int, KeyMap>(16)
     private val wasdKeyMap = HashMap<Int, KeyMap>(8)
     private val explicitlyMappedMouseKeys = HashSet<Int>(3)
+    private val aimingOnlyMouseKeys = HashSet<Int>(2)
 
     private val physicalKeysDown = HashSet<Int>(16)
     private val normalKeyStates = HashMap<Int, Boolean>(64)
@@ -486,6 +525,10 @@ class EventHandler(
 
     private var wasdMask = 0
     private var lastWasdMask = 0
+    private val nativePointersDown = HashSet<Int>(3)
+    private var shootingPointerActive = false
+    private var shootingPointerPosition: Offset? = null
+    private var maximumPointerPosition = Offset(Float.MAX_VALUE, Float.MAX_VALUE)
 
     @Volatile
     private var shootingMode = false
@@ -496,6 +539,20 @@ class EventHandler(
     var mousePointerPosition = Offset.Zero
     var appConfig = AppConfig.Default
 
+    @Synchronized fun setPointerBounds(maximumPosition: Offset) {
+        if (
+            !maximumPosition.x.isFinite() || !maximumPosition.y.isFinite() ||
+            maximumPosition.x < 0f || maximumPosition.y < 0f
+        ) return
+        if (maximumPointerPosition == maximumPosition) return
+        maximumPointerPosition = maximumPosition
+        // A rotation or window-size change invalidates the coordinate space of
+        // an active camera finger. End it now; the next relative mouse event
+        // starts a clean gesture at the newly clamped aiming anchor.
+        releaseShootingPointer()
+        if (usesTouchCore && shootingMode) enterCoreCamera()
+    }
+
     private var cancelableTouchHandler: MultiModeTouchHandler = MixedModeTouchHandler(eventInjector)
     // Regular mappings always mirror the lifetime of the physical key press.
     // A quick down/up is a tap; keeping the key down is a long press.
@@ -504,7 +561,7 @@ class EventHandler(
 
     /* ---------- touch mode ---------- */
 
-    fun setCancelableTouchMode(mode: TouchMode) {
+    @Synchronized fun setCancelableTouchMode(mode: TouchMode) {
         cancelableTouchHandler = when (mode) {
             TouchMode.TAP -> CancelableTapModeTouchHandler(eventInjector)
             TouchMode.HOLD -> CancelableHoldModeTouchHandler(eventInjector)
@@ -525,15 +582,79 @@ class EventHandler(
         val pointerId = pointerIds[key]
 
         if (enabled) {
-            val mapping = keyMap[key] ?: return false
+            if (keyMap[key] == null) return false
             if (pointerId == null) return false
             setShootingMode(true)
-            eventInjector.injectPointer(pointerId, mapping.position)
+            if (usesTouchCore) enterCoreCamera() else rebuildTouchStreamForShooting()
         } else {
             setShootingMode(false)
-            pointerId?.let(eventInjector::releasePointer)
+            releaseShootingPointer()
         }
         return true
+    }
+
+    private fun enterCoreCamera() {
+        val injector = eventInjector as? com.devoid.keysync.domain.touch.TouchCoreEventInjector ?: return
+        val key = appConfig.shootingModeKeyCode
+        val id = pointerIds[key] ?: return
+        val mapping = keyMap[key] ?: return
+        val maxX = maximumPointerPosition.x.toDouble().coerceAtLeast(2.0)
+        val maxY = maximumPointerPosition.y.toDouble().coerceAtLeast(2.0)
+        val anchor = com.devoid.keysync.domain.touch.TouchPoint(
+            mapping.position.x.toDouble().coerceIn(1.0, maxX - 1.0),
+            mapping.position.y.toDouble().coerceIn(1.0, maxY - 1.0))
+        cameraController = com.devoid.keysync.domain.touch.CameraGestureController(
+            com.devoid.keysync.domain.touch.ContactId(id), injector.pipeline::submit).also {
+            it.enter(com.devoid.keysync.domain.touch.CameraConfig(anchor,
+                com.devoid.keysync.domain.touch.TouchRect(0.0, 0.0, maxX, maxY)))
+        }
+    }
+
+    /**
+     * All synthetic fingers share one Android multi-touch stream. If the game
+     * drops only part of that stream, adding another camera pointer cannot
+     * reliably repair it. Start a fresh stream and restore inputs that are
+     * still physically held. The camera pointer is created lazily on the next
+     * mouse movement so it never has to survive a menu or dialogue transition.
+     */
+    private fun rebuildTouchStreamForShooting() {
+        eventInjector.clear()
+        nativePointersDown.clear()
+        shootingPointerActive = false
+        shootingPointerPosition = null
+
+        val effectiveWasdMask = effectiveWasdMask()
+        val activeWasdMapping = wasdKeyMap[effectiveWasdMask]
+        val activeWasdPointerId = wasdPointerId
+        if (
+            effectiveWasdMask != 0 &&
+            activeWasdMapping != null &&
+            activeWasdPointerId != null &&
+            activeWasdMapping.center != null
+        ) {
+            eventInjector.injectGesture(
+                activeWasdPointerId,
+                activeWasdMapping.center,
+                activeWasdMapping.position
+            )
+            lastWasdMask = effectiveWasdMask
+        } else {
+            lastWasdMask = 0
+        }
+
+        physicalKeysDown.forEach { keyCode ->
+            if (
+                keyCode == appConfig.shootingModeKeyCode ||
+                keyToWasdMask(keyCode) != 0 ||
+                normalKeyStates[keyCode] != true
+            ) return@forEach
+
+            val mapping = keyMap[keyCode] ?: return@forEach
+            val pointerId = pointerIds[keyCode] ?: return@forEach
+            val end = mapping.end ?: return@forEach
+            eventInjector.injectPointer(pointerId, mapping.position, end)
+        }
+
     }
 
 
@@ -542,7 +663,7 @@ class EventHandler(
     fun handleKeyEvent(event: KeyEvent): Boolean =
         handleKeyEvent(event.keyCode, event.action)
 
-    internal fun handleKeyEvent(keyCode: Int, action: Int): Boolean {
+    @Synchronized internal fun handleKeyEvent(keyCode: Int, action: Int): Boolean {
         val wasdBit = keyToWasdMask(keyCode)
         val pointerId = if (wasdBit != 0) wasdPointerId else pointerIds[keyCode]
         if (pointerId == null) return false
@@ -578,20 +699,39 @@ class EventHandler(
     /* ---------- WASD ---------- */
 
     private fun handleWasd(pointerId: Int) {
-        if (wasdMask == 0) {
+        val effectiveMask = effectiveWasdMask()
+        if (effectiveMask == 0) {
+            if (usesTouchCore && wasdMask != 0) {
+                val center = wasdKeyMap.values.firstOrNull()?.center ?: return
+                if (lastWasdMask == 0) eventInjector.injectGesture(pointerId, center, center)
+                else eventInjector.transFormGesture(pointerId, center)
+                lastWasdMask = 16 // Held opposite directions: centre, not a released contact.
+                return
+            }
             eventInjector.releaseGesture(pointerId)
             lastWasdMask = 0
             return
         }
 
-        val mapping = wasdKeyMap[wasdMask] ?: return
+        val mapping = wasdKeyMap[effectiveMask] ?: return
         if (lastWasdMask != 0) {
             eventInjector.transFormGesture(pointerId, mapping.position)
         } else {
             val center = mapping.center ?: return
             eventInjector.injectGesture(pointerId, center, mapping.position)
         }
-        lastWasdMask = wasdMask
+        lastWasdMask = effectiveMask
+    }
+
+    private fun effectiveWasdMask(): Int {
+        var effectiveMask = wasdMask
+        if (effectiveMask and MASK_W != 0 && effectiveMask and MASK_S != 0) {
+            effectiveMask = effectiveMask and (MASK_W or MASK_S).inv()
+        }
+        if (effectiveMask and MASK_A != 0 && effectiveMask and MASK_D != 0) {
+            effectiveMask = effectiveMask and (MASK_A or MASK_D).inv()
+        }
+        return effectiveMask
     }
 
 
@@ -650,13 +790,44 @@ class EventHandler(
 
     /* ---------- mouse ---------- */
 
-    fun handleMouseButton(button: Int, pressed: Boolean): Boolean {
+    @Synchronized fun handleMouseButton(button: Int, pressed: Boolean): Boolean {
         val keyCode = mouseButtonToKeyCode(button) ?: return false
         if (keyCode == appConfig.shootingModeKeyCode) {
             if (!pressed) return true
             return toggleShootingMode()
         }
         val pointerId = pointerIds[keyCode] ?: return false
+        // A click commonly confirms dialogue or dismisses a reward screen.
+        // End the old camera drag first so a game-cancelled touch target cannot
+        // leak across that UI boundary. Movement while the button is held can
+        // immediately establish a new camera pointer.
+        if (pressed && shootingMode && !usesTouchCore) releaseShootingPointer()
+
+        // Fire/scope are contextual mouse bindings: while aiming they press
+        // their configured game controls, but cursor mode must use the visible
+        // software-cursor position so menus remain clickable. User-created
+        // variable/cancelable mouse mappings remain explicit in both modes.
+        val useCursorClick = !shootingMode && (
+            keyCode !in explicitlyMappedMouseKeys || keyCode in aimingOnlyMouseKeys
+            )
+        if (useCursorClick) {
+            if (pressed) {
+                // A game can discard a synthetic multi-touch stream while it
+                // opens a menu without notifying us. Starting a cursor click
+                // as another POINTER_DOWN on that stale stream makes many UIs
+                // ignore it. Make every new cursor press an explicit gesture
+                // boundary so its first injected event is always ACTION_DOWN.
+                if (!usesTouchCore) {
+                    eventInjector.clear()
+                    nativePointersDown.clear()
+                }
+                nativePointersDown.add(pointerId)
+            } else {
+                nativePointersDown.remove(pointerId)
+            }
+            simulateNativeClick(pointerId = pointerId, pressed = pressed)
+            return true
+        }
 
         if (keyCode in explicitlyMappedMouseKeys) {
             if (pressed) {
@@ -669,11 +840,6 @@ class EventHandler(
             return true
         }
 
-        if (!shootingMode) {
-            simulateNativeClick(pointerId = pointerId, pressed = pressed)
-            return true
-        }
-
         keyMap[keyCode]?.let {
             if (pressed)
                 eventInjector.injectPointer(pointerId, it.position, it.end!!)
@@ -683,24 +849,106 @@ class EventHandler(
         return true
     }
 
-    fun handlePointerMove(position: Offset): Boolean {
-        val pointerId = if (shootingMode)
-            pointerIds[appConfig.shootingModeKeyCode]
-        else
-            pointerIds[KEYCODE_LMC]
-
-        pointerId?.let {
-            eventInjector.updatePointerPosition(it, position)
+    @Synchronized fun handlePointerMove(position: Offset): Boolean {
+        if (!position.x.isFinite() || !position.y.isFinite()) return false
+        if (!shootingMode) {
+            nativePointersDown.forEach { pointerId ->
+                eventInjector.updatePointerPosition(pointerId, position)
+            }
             return true
         }
-        return false
+
+        if (usesTouchCore) {
+            cameraController?.move(com.devoid.keysync.domain.touch.TouchPoint(position.x.toDouble(), position.y.toDouble()))
+            return true
+        }
+        val shootingKey = appConfig.shootingModeKeyCode
+        val pointerId = pointerIds[shootingKey] ?: return false
+        val mapping = keyMap[shootingKey] ?: return false
+        val anchor = clampPointerPosition(mapping.position)
+        if (!shootingPointerActive) {
+            eventInjector.injectPointer(pointerId, anchor)
+            shootingPointerActive = true
+            shootingPointerPosition = anchor
+        }
+        var currentPosition = shootingPointerPosition ?: anchor
+        var targetPosition = currentPosition + position
+        if (!isWithinPointerBounds(targetPosition) && currentPosition != anchor) {
+            eventInjector.rebasePointer(pointerId, anchor)
+            currentPosition = anchor
+            targetPosition = anchor + position
+        }
+        targetPosition = clampPointerPosition(targetPosition)
+        val effectiveOffset = targetPosition - currentPosition
+        if (effectiveOffset != Offset.Zero) {
+            eventInjector.updatePointerPosition(pointerId, effectiveOffset)
+        }
+        shootingPointerPosition = targetPosition
+        return true
+    }
+
+    /** Converts a wheel notch into a vertical finger swipe at the cursor. */
+    @Synchronized fun handleMouseScroll(verticalDelta: Float): Boolean {
+        if (shootingMode || !verticalDelta.isFinite() || verticalDelta == 0f) return false
+
+        val start = clampPointerPosition(mousePointerPosition)
+        val notchCount = kotlin.math.abs(verticalDelta).coerceIn(1f, MAX_SCROLL_NOTCHES)
+        val baseDistance = ((maximumPointerPosition.y + 1f) * SCROLL_HEIGHT_FRACTION)
+            .coerceIn(MIN_SCROLL_DISTANCE, MAX_SCROLL_DISTANCE)
+        val direction = if (verticalDelta > 0f) -1f else 1f
+        val end = clampPointerPosition(
+            start + Offset(0f, direction * baseDistance * notchCount)
+        )
+        if (end == start) return false
+
+        // Like cursor clicks, scrolling must not join a stale game gesture.
+        // It is also a natural boundary for held synthetic pointers: hardware
+        // events received after the swipe establish their own clean stream.
+        if (!usesTouchCore) {
+            eventInjector.clear()
+            resetTransientInputState()
+        }
+        eventInjector.injectSwipe(if (usesTouchCore) -10_001 else SCROLL_POINTER_ID, start, end)
+        return true
+    }
+
+    private fun isWithinPointerBounds(position: Offset): Boolean =
+        position.x in 0f..maximumPointerPosition.x &&
+            position.y in 0f..maximumPointerPosition.y
+
+    private fun clampPointerPosition(position: Offset): Offset = Offset(
+        position.x.coerceIn(0f, maximumPointerPosition.x),
+        position.y.coerceIn(0f, maximumPointerPosition.y)
+    )
+
+    /**
+     * Ends only the physical camera drag while keeping logical aiming enabled.
+     * Games frequently cancel a touch target while opening dialogue or reward
+     * UI. A later mouse movement can then start a clean camera gesture instead
+     * of joining that stale multi-touch stream.
+     */
+    @Synchronized fun releaseIdleShootingPointer() {
+        if (usesTouchCore) return
+        if (!shootingMode) return
+        releaseShootingPointer()
+    }
+
+    private fun releaseShootingPointer() {
+        cameraController?.exit()
+        cameraController = null
+        shootingPointerPosition = null
+        if (!shootingPointerActive) return
+
+        shootingPointerActive = false
+        pointerIds[appConfig.shootingModeKeyCode]
+            ?.let(eventInjector::releasePointer)
     }
 
     /* ---------- shooting mode ---------- */
 
     private fun toggleShootingMode(): Boolean = changeShootingMode(!shootingMode)
 
-    internal fun pauseForInputCaptureLoss(): Boolean {
+    @Synchronized internal fun pauseForInputCaptureLoss(): Boolean {
         val shouldResumeShootingMode = shootingMode
         eventInjector.clear()
         resetTransientInputState()
@@ -708,7 +956,7 @@ class EventHandler(
         return shouldResumeShootingMode
     }
 
-    internal fun resumeShootingMode(): Boolean = changeShootingMode(true)
+    @Synchronized internal fun resumeShootingMode(): Boolean = changeShootingMode(true)
 
 
     private fun simulateNativeClick(
@@ -724,15 +972,18 @@ class EventHandler(
 
     /* ---------- mapping ---------- */
 
-    fun updateKeyMapping(items: List<DraggableItem>) {
+    @Synchronized fun updateKeyMapping(items: List<DraggableItem>) {
+        if (usesTouchCore) clear()
         keyMap.clear()
         cancelKeyMap.clear()
         wasdKeyMap.clear()
         explicitlyMappedMouseKeys.clear()
+        aimingOnlyMouseKeys.clear()
         pointerIds.clear()
         physicalKeysDown.clear()
         normalKeyStates.clear()
         cancelToggle.clear()
+        nativePointersDown.clear()
         wasdPointerId = null
         wasdMask = 0
         lastWasdMask = 0
@@ -765,10 +1016,12 @@ class EventHandler(
                         x = item.s.x + ((item.d.x - item.s.x) / 2),
                         y = item.s.y + ((item.d.y - item.s.y) / 2)
                     )
-                    wasdKeyMap[MASK_W or MASK_A] = KeyMap(position = wa, center = item.center)
-                    wasdKeyMap[MASK_W or MASK_D] = KeyMap(position = wd, center = item.center)
-                    wasdKeyMap[MASK_S or MASK_A] = KeyMap(position = sa, center = item.center)
-                    wasdKeyMap[MASK_S or MASK_D] = KeyMap(position = sd, center = item.center)
+                    fun diagonal(midpoint: Offset): Offset = if (usesTouchCore)
+                        item.center + (midpoint - item.center) * kotlin.math.sqrt(2f) else midpoint
+                    wasdKeyMap[MASK_W or MASK_A] = KeyMap(position = diagonal(wa), center = item.center)
+                    wasdKeyMap[MASK_W or MASK_D] = KeyMap(position = diagonal(wd), center = item.center)
+                    wasdKeyMap[MASK_S or MASK_A] = KeyMap(position = diagonal(sa), center = item.center)
+                    wasdKeyMap[MASK_S or MASK_D] = KeyMap(position = diagonal(sd), center = item.center)
 
                     if (wasdPointerId == null) wasdPointerId = nextPointer++
                 }
@@ -776,12 +1029,7 @@ class EventHandler(
                 is DraggableItem.VariableKey -> {
                     val k = item.keyCode ?: return@forEach
                     if (isMouseButtonKeyCode(k)) explicitlyMappedMouseKeys.add(k)
-                    var position = item.position
-                    val shrinkSize =
-                        item.size / 3f  //shrink the size so that artificial taps can be accurate on circular buttons
-                    val end =
-                        position + Offset(x = item.size - shrinkSize, y = item.size - shrinkSize)
-                    position = Offset(position.x + shrinkSize, position.y + shrinkSize)
+                    val (position, end) = touchBounds(item.position, item.size)
 
                     keyMap[k] = KeyMap(position = position, end = end)
                     alloc(k)
@@ -794,12 +1042,16 @@ class EventHandler(
                         DraggableItemType.SCOPE -> appConfig.scopeKeyCode
                         else -> item.keyCode
                     }
-                    var position = item.position
-                    val shrinkSize =
-                        item.size / 3f  //shrink the size so that artificial taps can be accurate on circular buttons
-                    val end =
-                        position + Offset(x = item.size - shrinkSize, y = item.size - shrinkSize)
-                    position = Offset(position.x + shrinkSize, position.y + shrinkSize)
+                    if (isMouseButtonKeyCode(k)) {
+                        explicitlyMappedMouseKeys.add(k)
+                        if (
+                            item.type == DraggableItemType.FIRE ||
+                            item.type == DraggableItemType.SCOPE
+                        ) {
+                            aimingOnlyMouseKeys.add(k)
+                        }
+                    }
+                    val (position, end) = touchBounds(item.position, item.size)
                     keyMap[k] = KeyMap(position = position, end = end)
                     alloc(k)
                 }
@@ -807,22 +1059,8 @@ class EventHandler(
                 is DraggableItem.CancelableKey -> {
                     val k = item.keyCode ?: return@forEach
                     if (isMouseButtonKeyCode(k)) explicitlyMappedMouseKeys.add(k)
-                    var position =
-                        item.position
-                    var cancelPosition =
-                        item.cancelPosition
-                    val shrinkSize =
-                        item.size / 3f                                     //shrink the size so that artificial taps can be accurate on circular buttons
-                    val end =
-                        position + Offset(x = item.size - shrinkSize, y = item.size - shrinkSize)
-                    val cancelEnd =
-                        cancelPosition + Offset(
-                            x = item.size - shrinkSize,
-                            y = item.size - shrinkSize
-                        )
-                    position = Offset(position.x + shrinkSize, position.y + shrinkSize)
-                    cancelPosition =
-                        Offset(cancelPosition.x + shrinkSize, cancelPosition.y + shrinkSize)
+                    val (position, end) = touchBounds(item.position, item.size)
+                    val (cancelPosition, cancelEnd) = touchBounds(item.cancelPosition, item.size)
                     keyMap[k] =
                         KeyMap(type = KeymapType.CANCELABLE, position = position, end = end)
                     cancelKeyMap[k] =
@@ -839,23 +1077,49 @@ class EventHandler(
         alloc(KEYCODE_LMC)
     }
 
-    fun clear() {
+    private fun touchBounds(position: Offset, size: Int): Pair<Offset, Offset> {
+        val safeSize = size.coerceAtLeast(0).toFloat()
+        val inset = safeSize / 3f
+        return Offset(position.x + inset, position.y + inset) to
+            Offset(position.x + safeSize - inset, position.y + safeSize - inset)
+    }
+
+    @Synchronized fun clear() {
         eventInjector.clear()
         resetTransientInputState()
         setShootingMode(false)
     }
 
-    fun shutdown() {
+    @Synchronized fun resetForGameSwitch() {
+        eventInjector.cancelSystemTouch()
+        resetTransientInputState()
+        setShootingMode(false)
+    }
+
+    @Synchronized fun shutdown() {
         resetTransientInputState()
         setShootingMode(false)
         eventInjector.shutdown()
     }
 
     private fun resetTransientInputState() {
+        cameraController?.abandon()
+        cameraController = null
         physicalKeysDown.clear()
         normalKeyStates.clear()
         cancelToggle.clear()
         wasdMask = 0
         lastWasdMask = 0
+        nativePointersDown.clear()
+        shootingPointerActive = false
+        shootingPointerPosition = null
+    }
+
+    private companion object {
+        const val SCROLL_POINTER_ID = 9
+        const val SCROLL_HEIGHT_FRACTION = 0.12f
+        const val MIN_SCROLL_DISTANCE = 96f
+        const val MAX_SCROLL_DISTANCE = 320f
+        const val MAX_SCROLL_NOTCHES = 3f
     }
 }

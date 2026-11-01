@@ -7,6 +7,8 @@ import android.os.Bundle
 import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
@@ -23,9 +25,16 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -35,7 +44,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.devoid.keysync.MainActivityViewModel.UiState
 import com.devoid.keysync.model.ThemePreference
-import com.devoid.keysync.service.FloatingBubbleService
 import com.devoid.keysync.ui.AboutScreen
 import com.devoid.keysync.ui.MainScreen
 import com.devoid.keysync.ui.SettingsScreen
@@ -68,9 +76,48 @@ class MainActivity : AppCompatActivity() {
             }
         }
         setContent {
-            val uiState by viewModel.shizukuState.collectAsStateWithLifecycle()
-            val isServiceRunning by FloatingBubbleService.isRunning.collectAsStateWithLifecycle()
+            var pendingMumuUri by remember { mutableStateOf<Uri?>(null) }
+            var mumuPackage by remember { mutableStateOf("") }
+            val mumuLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+                if (uri != null) { mumuPackage = viewModel.suggestMumuPackage(uri); pendingMumuUri = uri }
+            }
+            val mumuPackages by viewModel.mumuPackages.collectAsStateWithLifecycle()
+            val diagnosticsLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+                uri?.let { viewModel.exportTouchDiagnostics(it) { success ->
+                    Toast.makeText(this@MainActivity, getString(if (success) R.string.backup_exported else R.string.backup_failed), Toast.LENGTH_SHORT).show()
+                } }
+            }
+            val exportLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.CreateDocument("application/json")
+            ) { uri ->
+                uri?.let {
+                    viewModel.exportMappingBackup(it) { success ->
+                        Toast.makeText(
+                            this@MainActivity,
+                            getString(if (success) R.string.backup_exported else R.string.backup_failed),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+            }
+            val importLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.OpenDocument()
+            ) { uri ->
+                uri?.let {
+                    viewModel.importMappingBackup(it) { success ->
+                        Toast.makeText(
+                            this@MainActivity,
+                            getString(if (success) R.string.backup_imported else R.string.backup_failed),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+            }
+            var confirmImport by remember { mutableStateOf(false) }
+            val uiState by viewModel.inputBackendState.collectAsStateWithLifecycle()
             val appConfig by viewModel.appConfig.collectAsStateWithLifecycle()
+            val rootConnectionStatus by viewModel.rootConnectionStatus.collectAsStateWithLifecycle()
+            val rootCaptureStatus by viewModel.rootCaptureStatus.collectAsStateWithLifecycle()
             val snackbarHostState = remember { SnackbarHostState() }
             val navController = rememberNavController()
             KeySyncTheme(
@@ -119,7 +166,7 @@ class MainActivity : AppCompatActivity() {
                                     snackbarHostState
                                 )
                             ) {
-                                viewModel.launchPackage(packageName,packageManager,isServiceRunning)
+                                viewModel.launchPackage(packageName, packageManager)
 //                                launchService()
                             }
                         }
@@ -127,7 +174,16 @@ class MainActivity : AppCompatActivity() {
                     composable<SettingsScreen>(
                         popEnterTransition = { EnterTransition.None }) {
                         SettingsScreen(
-                            appConfig = viewModel.appConfig.value,
+                            appConfig = appConfig,
+                            rootConnectionStatus = rootConnectionStatus,
+                            rootCaptureStatus = rootCaptureStatus,
+                            onRetryRoot = viewModel::retryRootConnection,
+                            onExportBackup = { exportLauncher.launch("keysync-mapping-backup.json") },
+                            onImportBackup = { confirmImport = true },
+                            onImportMumu = { mumuLauncher.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) },
+                            onExportTouchDiagnostics = { diagnosticsLauncher.launch("keysync-touch-diagnostics.json") },
+                            mumuPackages = mumuPackages,
+                            onRemoveMumu = viewModel::removeMumuProfile,
                             onNavigateBack = navController::popBackStack,
                             onNavigateAbout = { navController.navigate(route = AboutScreen) },
                             onSave = {
@@ -151,6 +207,45 @@ class MainActivity : AppCompatActivity() {
                             onOpenGithub = viewModel::openGithub
                         )
                     }
+                }
+                if (pendingMumuUri != null) {
+                    val validPackage = mumuPackage.length <= 255 &&
+                        Regex("[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)+").matches(mumuPackage)
+                    AlertDialog(
+                        onDismissRequest = { pendingMumuUri = null },
+                        title = { Text(stringResource(R.string.import_mumu)) },
+                        text = { Column {
+                            Text(stringResource(R.string.mumu_import_warning))
+                            OutlinedTextField(value = mumuPackage, onValueChange = { mumuPackage = it },
+                                singleLine = true, label = { Text(stringResource(R.string.target_package)) }, isError = !validPackage)
+                        } },
+                        confirmButton = { TextButton(enabled = validPackage, onClick = {
+                            val uri = pendingMumuUri ?: return@TextButton
+                            pendingMumuUri = null
+                            viewModel.importMumuProfile(uri, mumuPackage) { error ->
+                                Toast.makeText(this@MainActivity, error ?: getString(R.string.mumu_imported), Toast.LENGTH_LONG).show()
+                            }
+                        }) { Text(stringResource(R.string.import_mumu)) } },
+                        dismissButton = { TextButton(onClick = { pendingMumuUri = null }) { Text(stringResource(android.R.string.cancel)) } }
+                    )
+                }
+                if (confirmImport) {
+                    AlertDialog(
+                        onDismissRequest = { confirmImport = false },
+                        title = { Text(stringResource(R.string.restore_backup)) },
+                        text = { Text(stringResource(R.string.restore_backup_warning)) },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                confirmImport = false
+                                importLauncher.launch(arrayOf("application/json", "text/plain"))
+                            }) { Text(stringResource(R.string.restore)) }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { confirmImport = false }) {
+                                Text(stringResource(R.string.cancel))
+                            }
+                        }
+                    )
                 }
                 if (navigateTo.value != null) {
                     navController.navigate(route = navigateTo.value!!)
@@ -191,33 +286,27 @@ class MainActivity : AppCompatActivity() {
         snackbarHostState: SnackbarHostState
     ): Boolean {
         when (uiState) {
-            UiState.ShizukuNotRunning -> {
+            UiState.RootUnavailable -> {
+                scope.launch {
+                    snackbarHostState.showSnackbar(getString(R.string.root_backend_unavailable))
+                }
+                return false
+            }
+
+            UiState.RootRunning -> return checkOverlayPermission(
+                scope,
+                snackbarHostState
+            )
+
+            UiState.ShizukuUnavailable -> {
                 scope.launch {
                     snackbarHostState.showSnackbar(getString(R.string.shizuku_not_running))
                 }
                 return false
             }
 
-            is UiState.ShizukuRunning -> {
-                if (!checkOverlayPermission()) {
-                    scope.launch {
-                        val result = snackbarHostState
-                            .showSnackbar(
-                                message = getString(R.string.grant_permissions),
-                                actionLabel = getString(R.string.open_settings),
-                                duration = SnackbarDuration.Short
-                            )
-                        if (result == SnackbarResult.ActionPerformed) {
-                            val settingIntent =
-                                Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION)
-                            val uri =
-                                Uri.fromParts("package", packageName, null)
-                            settingIntent.setData(uri)
-                            startActivity(settingIntent)
-                        }
-                    }
-                    return false
-                }
+            UiState.ShizukuRunning -> {
+                if (!checkOverlayPermission(scope, snackbarHostState)) return false
                 if (!checkShizukuPermission()) {
                     if (viewModel.requestShizukuPermission()) {
                         return false
@@ -245,11 +334,34 @@ class MainActivity : AppCompatActivity() {
                             else -> {}
                         }
                     }
+                    return false
                 }
 
                 return true
             }
         }
+    }
+
+    private fun checkOverlayPermission(
+        scope: CoroutineScope,
+        snackbarHostState: SnackbarHostState
+    ): Boolean {
+        if (checkOverlayPermission()) return true
+
+        scope.launch {
+            val result = snackbarHostState.showSnackbar(
+                message = getString(R.string.grant_permissions),
+                actionLabel = getString(R.string.open_settings),
+                duration = SnackbarDuration.Short
+            )
+            if (result == SnackbarResult.ActionPerformed) {
+                val settingIntent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION)
+                val uri = Uri.fromParts("package", packageName, null)
+                settingIntent.setData(uri)
+                startActivity(settingIntent)
+            }
+        }
+        return false
     }
 }
 

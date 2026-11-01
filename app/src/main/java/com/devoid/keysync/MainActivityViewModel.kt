@@ -9,6 +9,7 @@ import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
 import android.hardware.input.InputManager
 import android.net.Uri
+import android.provider.OpenableColumns
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
@@ -19,8 +20,15 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.devoid.keysync.data.local.DataStoreManager
+import com.devoid.keysync.data.local.MappingBackupCodec
+import com.devoid.keysync.domain.touch.MumuProfileCodec
+import com.devoid.keysync.domain.touch.TouchDebugRegistry
+import kotlinx.serialization.json.*
+import com.devoid.keysync.data.external.RootInputConnection
 import com.devoid.keysync.model.AppConfig
 import com.devoid.keysync.model.DraggableItem
+import com.devoid.keysync.model.DraggableItemType
+import com.devoid.keysync.model.InputMode
 import com.devoid.keysync.service.FloatingBubbleService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -42,11 +50,18 @@ class MainActivityViewModel @Inject constructor(
     ViewModel(), Shizuku.OnRequestPermissionResultListener {
     private val TAG = "MainActivityViewModel"
     private val SHIZUKU_REQ_CODE = 10
-    private val _shizukuState = MutableStateFlow<UiState>(UiState.ShizukuNotRunning)
-    val shizukuState = _shizukuState.asStateFlow()
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var shizukuBinder: IBinder? = null
+    private val _inputBackendState =
+        MutableStateFlow<UiState>(UiState.RootUnavailable)
+    val inputBackendState = _inputBackendState.asStateFlow()
+    val rootConnectionStatus = RootInputConnection.status
+    val rootCaptureStatus = RootInputConnection.captureStatus
 
     private val _addedPackages = MutableStateFlow<List<String>>(listOf())
     val addedPackages = _addedPackages.asStateFlow()
+    private val _mumuPackages = MutableStateFlow<List<String>>(emptyList())
+    val mumuPackages = _mumuPackages.asStateFlow()
 
     private val _appConfig = MutableStateFlow(AppConfig.Default)
     val appConfig = _appConfig.asStateFlow()
@@ -56,49 +71,152 @@ class MainActivityViewModel @Inject constructor(
     val connectedDevices = _connectedDevices.asStateFlow()
 
     init {
+        viewModelScope.launch { dataStoreManager.getMumuPackages().collect { _mumuPackages.value = it } }
         Shizuku.addRequestPermissionResultListener(this)
         Shizuku.addBinderReceivedListener {
-            val binder = Shizuku.getBinder()
-            binder?.let {
-                _shizukuState.value = UiState.ShizukuRunning(it)
-            }
+            shizukuBinder = Shizuku.getBinder()
+            refreshInputBackendState()
         }
         Shizuku.addBinderDeadListener {
-            _shizukuState.value = UiState.ShizukuNotRunning
+            shizukuBinder = null
+            refreshInputBackendState()
         }
         getShizukuBinder()
+        viewModelScope.launch {
+            RootInputConnection.status.collect {
+                refreshInputBackendState()
+            }
+        }
         getConnectedExternalDevices()
         viewModelScope.launch {
             _addedPackages.value = dataStoreManager.getList(DataStoreManager.ADDED_PACKAGES).first()
             _appConfig.value = dataStoreManager.getKeyConfig(DataStoreManager.KEYS_CONFIG).first()
+            refreshInputBackendState()
         }
     }
 
     fun saveKeyConfig(newAppConfig: AppConfig) {
+        val oldAppConfig = _appConfig.value
         val newFireKeyCode = newAppConfig.fireKeyCode
         val newShootingModeKeyCode = newAppConfig.shootingModeKeyCode
-        if (newFireKeyCode != appConfig.value.fireKeyCode ||
-            newShootingModeKeyCode != appConfig.value.shootingModeKeyCode
-        ) {
-            viewModelScope.launch {
+        val newScopeKeyCode = newAppConfig.scopeKeyCode
+        viewModelScope.launch {
+            if (newFireKeyCode != oldAppConfig.fireKeyCode ||
+                newShootingModeKeyCode != oldAppConfig.shootingModeKeyCode ||
+                newScopeKeyCode != oldAppConfig.scopeKeyCode
+            ) {
                 dataStoreManager.getButtonsConfigKeys().first().forEach {
                     val buttonsConfig = dataStoreManager.getButtons(it).first().toMutableList()
                     buttonsConfig.forEachIndexed { index, value ->
                         if (value is DraggableItem.FixedKey) {
-                            if (value.keyCode == appConfig.value.fireKeyCode) {
-                                buttonsConfig[index] = value.copy(keyCode = newFireKeyCode)
-                            } else if (value.keyCode == appConfig.value.shootingModeKeyCode) {
-                                buttonsConfig[index] = value.copy(keyCode = newShootingModeKeyCode)
+                            val newKeyCode = when (value.type) {
+                                DraggableItemType.FIRE -> newFireKeyCode
+                                DraggableItemType.SHOOTING_MODE -> {
+                                    newShootingModeKeyCode
+                                }
+                                DraggableItemType.SCOPE -> newScopeKeyCode
+                                else -> null
+                            }
+                            if (newKeyCode != null) {
+                                buttonsConfig[index] = value.copy(keyCode = newKeyCode)
                             }
                         }
                     }
                     dataStoreManager.save(it, buttonsConfig)
                 }
             }
-        }
-        viewModelScope.launch {
             dataStoreManager.save(DataStoreManager.KEYS_CONFIG, newAppConfig)
             _appConfig.value = newAppConfig
+            if (
+                newAppConfig.inputMode == InputMode.ROOT &&
+                newAppConfig.inputMode != oldAppConfig.inputMode
+            ) {
+                RootInputConnection.retry(context)
+            }
+            refreshInputBackendState()
+            if (newAppConfig.inputMode != oldAppConfig.inputMode) {
+                // A privilege backend change is a session boundary. Stop any
+                // existing mapping instead of changing backend under live pointers.
+                context.stopService(Intent(context, FloatingBubbleService::class.java))
+            }
+        }
+    }
+
+    fun exportMappingBackup(uri: Uri, onFinished: (Boolean) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val success = runCatching {
+                val text = MappingBackupCodec.encode(dataStoreManager.createMappingBackup())
+                requireNotNull(context.contentResolver.openOutputStream(uri)).use { output ->
+                    output.write(text.toByteArray(Charsets.UTF_8))
+                }
+            }.isSuccess
+            withContext(Dispatchers.Main) { onFinished(success) }
+        }
+    }
+
+    fun exportTouchDiagnostics(uri: Uri, onFinished: (Boolean) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val success = runCatching {
+                val json = Json { prettyPrint = true; encodeDefaults = true }
+                val report = buildJsonObject {
+                    put("version", BuildConfig.VERSION_NAME)
+                    put("engine", if (BuildConfig.TOUCH_CORE) "Framework Touch Core" else "Legacy")
+                    put("inputMode", _appConfig.value.inputMode.name)
+                    put("moveWindowMillis", BuildConfig.TOUCH_MOVE_WINDOW_MILLIS)
+                    put("rootConnection", RootInputConnection.status.value.name)
+                    put("capture", RootInputConnection.captureStatus.value.toString())
+                    put("scope", "Last 256 app-side queue/backend samples only. Includes encoding and Binder return, NOT physical-to-game latency or visual response.")
+                    put("touch", TouchDebugRegistry.snapshot()?.let { json.encodeToJsonElement(it) } ?: JsonNull)
+                }
+                requireNotNull(context.contentResolver.openOutputStream(uri)).use {
+                    it.write(json.encodeToString(report).toByteArray(Charsets.UTF_8))
+                }
+            }.isSuccess
+            withContext(Dispatchers.Main) { onFinished(success) }
+        }
+    }
+
+    fun importMappingBackup(uri: Uri, onFinished: (Boolean) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val success = runCatching {
+                val backup = requireNotNull(context.contentResolver.openInputStream(uri)).use {
+                    MappingBackupCodec.read(it)
+                }
+                dataStoreManager.restoreMappingBackup(backup)
+                withContext(Dispatchers.Main) { context.stopService(Intent(context, FloatingBubbleService::class.java)) }
+                _addedPackages.value = dataStoreManager.getList(DataStoreManager.ADDED_PACKAGES).first()
+                _appConfig.value = backup.keySettings.applyTo(_appConfig.value)
+            }.isSuccess
+            withContext(Dispatchers.Main) {
+                refreshInputBackendState()
+                onFinished(success)
+            }
+        }
+    }
+
+    fun suggestMumuPackage(uri: Uri): String = runCatching {
+        context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
+            if (it.moveToFirst()) it.getString(0).substringBefore('-').substringBefore(".json") else ""
+        }.orEmpty()
+    }.getOrDefault("")
+
+    fun importMumuProfile(uri: Uri, packageName: String, onFinished: (String?) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val error = runCatching {
+                require(BuildConfig.TOUCH_CORE) { "MuMu profiles need Touch Core" }
+                val text = requireNotNull(context.contentResolver.openInputStream(uri)).use(MumuProfileCodec::read)
+                dataStoreManager.saveMumuProfile(packageName, text)
+                withContext(Dispatchers.Main) { context.stopService(Intent(context, FloatingBubbleService::class.java)) }
+                _addedPackages.value = dataStoreManager.getList(DataStoreManager.ADDED_PACKAGES).first()
+            }.exceptionOrNull()?.message
+            withContext(Dispatchers.Main) { onFinished(error) }
+        }
+    }
+
+    fun removeMumuProfile(packageName: String) {
+        viewModelScope.launch {
+            context.stopService(Intent(context, FloatingBubbleService::class.java))
+            dataStoreManager.removeMumuProfile(packageName)
         }
     }
 
@@ -206,19 +324,34 @@ class MainActivityViewModel @Inject constructor(
     }
 
     private fun getShizukuBinder() {
-        Shizuku.getBinder()?.let {
-            _shizukuState.value = UiState.ShizukuRunning(it)
-        } ?: {
-            _shizukuState.value = UiState.ShizukuNotRunning
+        shizukuBinder = Shizuku.getBinder()
+        refreshInputBackendState()
+    }
+
+    private fun refreshInputBackendState() {
+        _inputBackendState.value = when (_appConfig.value.inputMode) {
+            InputMode.ROOT -> if (RootInputConnection.isReady()) {
+                UiState.RootRunning
+            } else {
+                UiState.RootUnavailable
+            }
+            InputMode.SHIZUKU -> if (shizukuBinder != null) {
+                UiState.ShizukuRunning
+            } else {
+                UiState.ShizukuUnavailable
+            }
         }
+    }
+
+    fun retryRootConnection() {
+        RootInputConnection.retry(context)
     }
 
     override fun onRequestPermissionResult(requestCode: Int, grantResult: Int) {
         val granted = grantResult == PackageManager.PERMISSION_GRANTED
         if (granted) {
-            Shizuku.getBinder()?.let {
-                _shizukuState.value = UiState.ShizukuRunning(it)
-            } ?: { _shizukuState.value = UiState.ShizukuNotRunning }
+            shizukuBinder = Shizuku.getBinder()
+            refreshInputBackendState()
         }
     }
 
@@ -240,8 +373,10 @@ class MainActivityViewModel @Inject constructor(
     }
 
     sealed interface UiState {
-        data object ShizukuNotRunning : UiState
-        data class ShizukuRunning(val binder: IBinder) : UiState
+        data object RootUnavailable : UiState
+        data object RootRunning : UiState
+        data object ShizukuUnavailable : UiState
+        data object ShizukuRunning : UiState
     }
 
     override fun onCleared() {
@@ -249,18 +384,31 @@ class MainActivityViewModel @Inject constructor(
         Log.i("MainActivityViewModel", "onCleared: main viewModelCleared ")
     }
 
-    fun launchPackage(packageName: String,packageManager: PackageManager,isServiceRunning:Boolean) {
+    fun launchPackage(packageName: String, packageManager: PackageManager) {
         try {
             val packageIntent =
-                packageManager.getLaunchIntentForPackage(packageName)
-            packageIntent?.let {
-                it.flags =
-                    Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
-            }
-            context.startActivity(packageIntent)
-            if (!isServiceRunning) {
-                launchFloatingBubbleService(packageName)
-            }
+                packageManager.getLaunchIntentForPackage(packageName) ?: run {
+                    Log.e(TAG, "No launch intent found for $packageName")
+                    return
+                }
+
+            // Tell an existing overlay to release input focus before Android
+            // starts the target activity. The service also uses this command to
+            // load the selected mapping while the application draws its first
+            // window.
+            launchFloatingBubbleService(packageName)
+
+            // Preserve the launcher's normal task flags. REORDER_TO_FRONT can
+            // expose a stale activity surface from an existing task, which is
+            // especially visible as a permanent black screen in games.
+            packageIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            mainHandler.postDelayed(
+                {
+                    runCatching { context.startActivity(packageIntent) }
+                        .onFailure { Log.e(TAG, "failed to launch package", it) }
+                },
+                OVERLAY_FOCUS_RELEASE_DELAY_MILLIS
+            )
         }catch (e:Exception){
             //failed to launch package
             Log.e(TAG,"failed to launch package",e)
@@ -271,7 +419,11 @@ class MainActivityViewModel @Inject constructor(
             context,
             FloatingBubbleService::class.java
         )
-        serviceIntent.putExtra(FloatingBubbleService.INTENT_EXTRA_PACAKAGE, packageName)
+        serviceIntent.putExtra(FloatingBubbleService.INTENT_EXTRA_PACKAGE, packageName)
         context.startForegroundService(serviceIntent)
+    }
+
+    private companion object {
+        const val OVERLAY_FOCUS_RELEASE_DELAY_MILLIS = 250L
     }
 }

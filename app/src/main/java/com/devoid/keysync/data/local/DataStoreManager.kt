@@ -6,8 +6,11 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.devoid.keysync.domain.migrateLegacyMouseKeyCode
+import com.devoid.keysync.domain.migrateLegacyMouseKeyCodes
 import com.devoid.keysync.model.AppConfig
 import com.devoid.keysync.model.DraggableItem
+import com.devoid.keysync.domain.touch.MumuProfileCodec
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.json.Json
@@ -17,7 +20,29 @@ val Context.datastore by preferencesDataStore("app_configurations")
 
 class DataStoreManager @Inject constructor(private val context: Context) {
 
+    suspend fun createMappingBackup(): MappingBackup =
+        MappingBackupStore(context.datastore).snapshot(context.packageName, System.currentTimeMillis())
+
+    suspend fun restoreMappingBackup(backup: MappingBackup) =
+        MappingBackupStore(context.datastore).restore(backup)
+
+    fun getMumuProfile(packageName: String): Flow<String?> = getString(stringPreferencesKey(MUMU_PREFIX + packageName))
+    fun getMumuPackages(): Flow<List<String>> = context.datastore.data.map { preferences ->
+        preferences.asMap().keys.map { it.name }.filter { it.startsWith(MUMU_PREFIX) }.map { it.removePrefix(MUMU_PREFIX) }.sorted()
+    }
+    suspend fun saveMumuProfile(packageName: String, text: String) {
+        require(packageName.length <= 255 && Regex("[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)+").matches(packageName))
+        MumuProfileCodec.decode(text)
+        context.datastore.edit { preferences ->
+            preferences[stringPreferencesKey(MUMU_PREFIX + packageName)] = text
+            val added = preferences[ADDED_PACKAGES]?.let { Json.decodeFromString<List<String>>(it) } ?: emptyList()
+            preferences[ADDED_PACKAGES] = Json.encodeToString((added + packageName).distinct())
+        }
+    }
+    suspend fun removeMumuProfile(packageName: String) = remove(stringPreferencesKey(MUMU_PREFIX + packageName))
+
     companion object {
+        const val MUMU_PREFIX = "mumu_profile_"
         fun getButtonsConfigKey(packageName: String): Preferences.Key<String> =
             stringPreferencesKey("buttons_config_$packageName")
 
@@ -47,7 +72,8 @@ class DataStoreManager @Inject constructor(private val context: Context) {
     fun getButtons(key: Preferences.Key<String>): Flow<List<DraggableItem>> {
         return context.datastore.data.map { pref ->
             val json = pref[key] ?: return@map emptyList()
-            Json.decodeFromString(json)
+            Json.decodeFromString<List<DraggableItem>>(json)
+                .map { item -> item.migrateLegacyMouseKeyCode() }
         }
     }
 
@@ -75,7 +101,7 @@ class DataStoreManager @Inject constructor(private val context: Context) {
     fun getKeyConfig(key: Preferences.Key<String>): Flow<AppConfig> {
         return context.datastore.data.map { pref ->
             val json = pref[key] ?: return@map AppConfig.Default
-            Json.decodeFromString(json)
+            Json.decodeFromString<AppConfig>(json).migrateLegacyMouseKeyCodes()
         }
     }
 

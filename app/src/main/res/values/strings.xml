@@ -1,11 +1,42 @@
 <resources>
-    <string name="app_name">Key Sync</string>
+    <string name="app_name">Key Sync Touch Engine</string>
 
     <string name="settings_title">Settings</string>
     <string name="back">Back</string>
     <string name="save">Save</string>
     <string name="saved_successfully">Settings saved</string>
     <string name="key_configuration">Key configuration</string>
+    <string name="input_mode">Touch input engine</string>
+    <string name="input_mode_root">Root native touch</string>
+    <string name="input_mode_root_description">Exclusively captures the keyboard and mouse and uses the low-latency Root touch backend. Mapping stops immediately if Root or native capture is lost.</string>
+    <string name="input_mode_shizuku">Shizuku / ADB</string>
+    <string name="input_mode_shizuku_description">Compatibility mode for devices without Root. Requires Shizuku to be running and authorized.</string>
+    <string name="root_service_status">Root status</string>
+    <string name="root_status_ready">Root granted; privileged injection is ready</string>
+    <string name="root_status_connecting">Checking Root authorization…</string>
+    <string name="root_status_unavailable">Root unavailable, denied, or the Root service timed out</string>
+    <string name="retry_root">Check Root again</string>
+    <string name="root_capture_idle">Native keyboard/mouse capture is idle; it starts after a game is launched</string>
+    <plurals name="root_capture_starting">
+        <item quantity="one">Taking over %1$d Android input device…</item>
+        <item quantity="other">Taking over %1$d Android input devices…</item>
+    </plurals>
+    <plurals name="root_capture_active">
+        <item quantity="one">Root is exclusively controlling %1$d input node</item>
+        <item quantity="other">Root is exclusively controlling %1$d input nodes</item>
+    </plurals>
+    <string name="root_capture_no_android_devices">Root capture failed: Android reported no external keyboard or mouse</string>
+    <string name="root_capture_root_lost">Root capture stopped because the Root service was lost</string>
+    <string name="root_capture_rejected">Root service rejected the capture request</string>
+    <string name="root_capture_no_matched_nodes">Root capture failed: no safe evdev node matched Android’s external-device list</string>
+    <string name="root_capture_no_keyboard_node">Root capture matched the mouse, but found no keyboard node that can receive WASD</string>
+    <string name="root_capture_no_mouse_motion_node">Root capture matched devices, but found no mouse movement node</string>
+    <string name="root_capture_no_mouse_button_node">Root capture matched devices, but found no primary mouse-button node</string>
+    <string name="root_capture_no_pair">Root capture failed: a complete keyboard and mouse pair could not be matched or exclusively grabbed</string>
+    <string name="root_capture_uinput_unavailable">Root virtual device creation failed: /dev/uinput is unavailable or blocked by the Root/SELinux policy</string>
+    <string name="root_capture_permission_denied">Root or SELinux denied access to the input devices</string>
+    <string name="root_capture_busy">Root input capture is already in use</string>
+    <string name="root_capture_native_error">Root native input capture failed</string>
     <string name="toggle_aiming_mode">Toggle aiming mode:</string>
     <string name="fire_action">Fire / attack:</string>
     <string name="scope_action">Aim / scope:</string>
@@ -31,11 +62,23 @@
     <string name="touch_mode_mixed">Tap to toggle / hold</string>
     <string name="reset_to_defaults">Reset to defaults</string>
     <string name="about">About</string>
+    <string name="mapping_backup">Mapping backup</string>
+    <string name="mapping_backup_description">Export or restore global keys and every app mapping. The same JSON file works across the main and touch engine versions.</string>
+    <string name="export_backup">Export backup</string>
+    <string name="restore_backup">Restore backup</string>
+    <string name="restore_backup_warning">Restoring will overwrite matching mappings and global key settings. Continue?</string>
+    <string name="restore">Restore</string>
+    <string name="cancel">Cancel</string>
+    <string name="backup_exported">Mapping backup exported</string>
+    <string name="backup_imported">Mapping backup restored</string>
+    <string name="backup_failed">Backup operation failed</string>
     <string name="version_format">Version: %1$s</string>
     <string name="github">GitHub</string>
     <string name="contact">Contact</string>
 
     <string name="shizuku_not_running">Start the Shizuku service first</string>
+    <string name="input_backend_unavailable">The selected input backend is unavailable.</string>
+    <string name="root_backend_unavailable">Root mode is selected, but Root is not ready. Check Root status in Settings.</string>
     <string name="grant_permissions">Grant the required permission in system settings</string>
     <string name="open_settings">Settings</string>
     <string name="connected_devices">Connected devices:</string>
@@ -79,4 +122,20 @@
     <string name="mouse_pointer">Mouse pointer</string>
     <string name="overlay_service_channel">Key Sync overlay service</string>
     <string name="overlay_service_running">%1$s overlay service is running</string>
+    <string name="overlay_service_root_active">Root is exclusively controlling the keyboard and mouse</string>
+    <string name="overlay_service_shizuku_active">Shizuku / ADB compatibility mapping is active</string>
+    <string name="overlay_service_target_paused">Target app left the foreground; key mapping is paused</string>
+    <string name="mapping_stopped_root_lost">Root was lost. Key mapping has been stopped; it was not switched to Shizuku.</string>
+    <string name="mapping_stopped_root_capture_failed">Root could not exclusively capture both keyboard and mouse. Key mapping has been stopped.</string>
+    <string name="mapping_stopped_injection_failed">Privileged touch injection failed. Key mapping has been stopped.</string>
+    <string name="touch_core_title">Touch Core · Framework Alpha</string>
+    <string name="import_mumu">Import MuMu touch profile</string>
+    <string name="mumu_import_description">Persistent camera contact and independent multi-touch. Import a JSON profile for one app; your existing mapping is retained. Import replaces only that app’s MuMu profile.</string>
+    <string name="mumu_import_warning">Confirm the target app package. Stops the current mapping. This profile takes precedence over the existing editor mapping; remove it here to return to your existing mapping.</string>
+    <string name="target_package">Target app package</string>
+    <string name="mumu_imported">MuMu profile imported. Launch the target app from KeySync.</string>
+    <string name="use_existing_mapping">Remove MuMu profile · use existing mapping</string>
+    <string name="export_touch_diagnostics">Export Touch Core diagnostics</string>
+    <string name="mumu_cursor_mode_hint">Mouse mode · Press %1$s to aim</string>
+    <string name="mumu_aiming_mode_hint">Aiming mode · Press %1$s to show cursor</string>
 </resources>

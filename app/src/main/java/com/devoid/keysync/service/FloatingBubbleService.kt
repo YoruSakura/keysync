@@ -1,17 +1,24 @@
 package com.devoid.keysync.service
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
+import android.content.res.Configuration
 import android.content.Intent
 import android.graphics.PixelFormat
+import android.content.pm.PackageManager
+import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.util.Log
 import android.view.Gravity
 import android.view.ViewTreeObserver
 import android.view.WindowManager
 import android.widget.FrameLayout
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -20,6 +27,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -40,12 +48,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.constraintlayout.compose.ConstraintLayout
 import androidx.constraintlayout.compose.Dimension
@@ -59,6 +67,7 @@ import com.devoid.keysync.R
 import com.devoid.keysync.model.DraggableItemType
 import com.devoid.keysync.ui.overlay.FloatingBubble
 import com.devoid.keysync.ui.overlay.ItemsContainer
+import com.devoid.keysync.ui.overlay.MumuOverlay
 import com.devoid.keysync.ui.overlay.MenuItems
 import com.devoid.keysync.ui.overlay.ServiceLifecycleOwner
 import com.devoid.keysync.ui.overlay.SettingsLayout
@@ -68,8 +77,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import kotlin.math.roundToInt
@@ -85,21 +93,31 @@ class FloatingBubbleService : Service() {
     lateinit var stateManager: Lazy<FloatingWindowStateManager>
 
     companion object {
-        val INTENT_EXTRA_PACAKAGE = "launchedPackageName"
-        private val _isRunning = MutableStateFlow(false)
-        val isRunning = _isRunning.asStateFlow()
+        const val INTENT_EXTRA_PACKAGE = "launchedPackageName"
+        private const val NOTIFICATION_CHANNEL_ID = "channel1"
+        private const val NOTIFICATION_ID = 1
         private const val CAPTURE_RETRY_DELAY_MILLIS = 100L
         private const val CAPTURE_WATCHDOG_DELAY_MILLIS = 250L
+        private const val APP_LAUNCH_FOCUS_GRACE_MILLIS = 2500L
+        private const val FOREGROUND_CHECK_INTERVAL_MILLIS = 150L
     }
 
     private val lifecycleOwner = ServiceLifecycleOwner()
 
     private val scope = CoroutineScope(Dispatchers.Main)
-    private var containerView: ComposeView? = null
+    private var containerView: PointerCaptureFrameLayout? = null
     private var floatingBubbleView: ComposeView? = null
     private var initialized = false
+    private var inputCaptureSuppressedForAppLaunch = false
+    private var launchedTargetPackage: String? = null
+    private var mappingTargetIsActive = false
+    private var foregroundCheckInFlight = false
+    private var foregroundCheckGeneration = 0L
     private var windowFocusChangeListener: ViewTreeObserver.OnWindowFocusChangeListener? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
     private val restoreInputCaptureRunnable = Runnable { restoreInputCapture() }
+    private val finishAppLaunchGraceRunnable = Runnable { finishAppLaunchFocusGrace() }
+    private val foregroundCheckRunnable = Runnable { checkTargetForeground() }
     private val inputCaptureRecovery by lazy {
         InputCaptureRecoveryController(
             onInterrupted = { stateManager.get().onInputCaptureInterrupted() },
@@ -109,20 +127,23 @@ class FloatingBubbleService : Service() {
 
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        _isRunning.value = true
         val localizedContext = ContextCompat.getContextForLanguage(this)
         val channel = NotificationChannel(
-            "channel1",
+            NOTIFICATION_CHANNEL_ID,
             localizedContext.getString(R.string.overlay_service_channel),
             NotificationManager.IMPORTANCE_LOW
         )
-        val launchedPackageName = intent?.getStringExtra(INTENT_EXTRA_PACAKAGE)
-        launchedPackageName?.let {
+        val launchedPackageName = intent?.getStringExtra(INTENT_EXTRA_PACKAGE)
+        launchedPackageName?.takeIf(String::isNotBlank)?.let {
+            launchedTargetPackage = it
+            foregroundCheckGeneration++
+            beginAppLaunchFocusGrace()
             stateManager.get().loadButtonsConfig(it)
         }
         val notificationManager = getSystemService(NotificationManager::class.java)
         notificationManager.createNotificationChannel(channel)
-        val notification = NotificationCompat.Builder(this, "channel1").apply {
+        val notification = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID).apply {
+            setSmallIcon(R.drawable.key_sync)
             setContentTitle(localizedContext.getString(R.string.app_name))
             setContentText(
                 localizedContext.getString(
@@ -131,7 +152,7 @@ class FloatingBubbleService : Service() {
                 )
             )
         }.build()
-        startForeground(1, notification)
+        startForeground(NOTIFICATION_ID, notification)
 
         if (!initialized) {
             if (lifecycleOwner.lifecycle.currentState == Lifecycle.State.INITIALIZED) {
@@ -179,6 +200,7 @@ class FloatingBubbleService : Service() {
                     height = WindowManager.LayoutParams.MATCH_PARENT
                 }
                 if (expanded) {
+                    stateManager.get().stopInputCapture()
                     containerView?.removeCallbacks(restoreInputCaptureRunnable)
                     inputCaptureRecovery.reset()
                     itemsContainerLP.flags =
@@ -192,31 +214,128 @@ class FloatingBubbleService : Service() {
                     stateManager.get().clearActivePointers()
                 } else {
                     inputCaptureRecovery.reset()
-                    itemsContainerLP.flags =
-                        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                    itemsContainerLP.flags = collapsedOverlayFlags()
                     stateManager.get().windowManager.updateViewLayout(
                         containerView,
                         itemsContainerLP
                     )
-                    scheduleInputCaptureRestore(delayMillis = 0)
+                    if (!inputCaptureSuppressedForAppLaunch) {
+                        stateManager.get().startInputCapture()
+                        scheduleInputCaptureRestore(delayMillis = 0)
+                    }
                 }
+            }
+        }
+        scope.launch {
+            stateManager.get().rootInputCaptureActive.collect { active ->
+                val view = containerView ?: return@collect
+                if (stateManager.get().isBubbleExpanded.value || !view.isAttachedToWindow) {
+                    return@collect
+                }
+
+                itemsContainerLP.flags = collapsedOverlayFlags()
+                runCatching {
+                    stateManager.get().windowManager.updateViewLayout(view, itemsContainerLP)
+                }.onFailure { Log.w(TAG, "Unable to update root capture overlay state", it) }
+
+                if (active) {
+                    updateMappingNotification(R.string.overlay_service_root_active)
+                    view.removeCallbacks(restoreInputCaptureRunnable)
+                    inputCaptureRecovery.reset()
+                    view.releasePointerCapture()
+                    view.clearFocus()
+                } else if (
+                    !inputCaptureSuppressedForAppLaunch &&
+                    stateManager.get().overlayInputCaptureAllowed.value
+                ) {
+                    inputCaptureRecovery.reset()
+                    scheduleInputCaptureRestore(delayMillis = 0L)
+                }
+            }
+        }
+        scope.launch {
+            stateManager.get().overlayInputCaptureAllowed.collect { allowed ->
+                if (allowed && !stateManager.get().isBubbleExpanded.value) {
+                    updateMappingNotification(R.string.overlay_service_shizuku_active)
+                    scheduleInputCaptureRestore(delayMillis = 0L)
+                } else if (!allowed) {
+                    containerView?.removeCallbacks(restoreInputCaptureRunnable)
+                    containerView?.releasePointerCapture()
+                    containerView?.clearFocus()
+                    if (
+                        !inputCaptureSuppressedForAppLaunch &&
+                        !stateManager.get().isBubbleExpanded.value
+                    ) {
+                        stateManager.get().startInputCapture()
+                    }
+                }
+            }
+        }
+        scope.launch {
+            stateManager.get().mappingFailure.filterNotNull().collect { failure ->
+                val message = when (failure) {
+                    FloatingWindowStateManager.MappingFailure.ROOT_CONNECTION_LOST -> {
+                        R.string.mapping_stopped_root_lost
+                    }
+                    FloatingWindowStateManager.MappingFailure.ROOT_CAPTURE_FAILED -> {
+                        R.string.mapping_stopped_root_capture_failed
+                    }
+                    FloatingWindowStateManager.MappingFailure.INPUT_INJECTION_FAILED -> {
+                        R.string.mapping_stopped_injection_failed
+                    }
+                }
+                Toast.makeText(
+                    ContextCompat.getContextForLanguage(this@FloatingBubbleService),
+                    message,
+                    Toast.LENGTH_LONG
+                ).show()
+                stopSelf()
             }
         }
         stateManager.get().windowManager.addView(containerView, itemsContainerLP)
         floatingBubbleLP.y = 200
         stateManager.get().windowManager.addView(floatingBubbleView, floatingBubbleLP)
+        stateManager.get().updateDisplayBounds()
         scheduleInputCaptureRestore(delayMillis = 1000)
     }
 
     private fun scheduleInputCaptureRestore(delayMillis: Long = CAPTURE_RETRY_DELAY_MILLIS) {
+        if (
+            inputCaptureSuppressedForAppLaunch ||
+            stateManager.get().rootInputCaptureActive.value ||
+            !stateManager.get().overlayInputCaptureAllowed.value
+        ) return
         val view = containerView ?: return
         view.removeCallbacks(restoreInputCaptureRunnable)
         view.postDelayed(restoreInputCaptureRunnable, delayMillis)
     }
 
+    private fun updateMappingNotification(contentText: Int) {
+        if (
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) return
+        val localizedContext = ContextCompat.getContextForLanguage(this)
+        val notification = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
+            .setSmallIcon(R.drawable.key_sync)
+            .setContentTitle(localizedContext.getString(R.string.app_name))
+            .setContentText(localizedContext.getString(contentText))
+            .setOnlyAlertOnce(true)
+            .build()
+        getSystemService(NotificationManager::class.java)
+            .notify(NOTIFICATION_ID, notification)
+    }
+
     private fun restoreInputCapture() {
         val view = containerView ?: return
-        if (!view.isAttachedToWindow || stateManager.get().isBubbleExpanded.value) return
+        if (
+            inputCaptureSuppressedForAppLaunch ||
+            stateManager.get().rootInputCaptureActive.value ||
+            !stateManager.get().overlayInputCaptureAllowed.value ||
+            !view.isAttachedToWindow ||
+            stateManager.get().isBubbleExpanded.value
+        ) return
 
         val hasCompleteCapture =
             view.hasWindowFocus() && view.hasFocus() && view.hasPointerCapture()
@@ -263,6 +382,129 @@ class FloatingBubbleService : Service() {
         scheduleInputCaptureRestore()
     }
 
+    /**
+     * A focusable full-screen overlay can pre-empt the first window of an app
+     * launched from KeySync. Some renderers never recover that surface and stay
+     * black. Keep the overlay visible but non-focusable during the task switch;
+     * mapping capture is enabled after the target has had time to draw.
+     */
+    private fun beginAppLaunchFocusGrace() {
+        inputCaptureSuppressedForAppLaunch = true
+        setMappingTargetActive(false)
+        stateManager.get().stopInputCapture()
+        mainHandler.removeCallbacks(foregroundCheckRunnable)
+        mainHandler.removeCallbacks(finishAppLaunchGraceRunnable)
+        mainHandler.postDelayed(
+            finishAppLaunchGraceRunnable,
+            APP_LAUNCH_FOCUS_GRACE_MILLIS
+        )
+
+        val view = containerView ?: return
+        view.removeCallbacks(restoreInputCaptureRunnable)
+        inputCaptureRecovery.reset()
+        view.releasePointerCapture()
+        view.clearFocus()
+        if (!stateManager.get().isBubbleExpanded.value && view.isAttachedToWindow) {
+            itemsContainerLP.flags = collapsedOverlayFlags()
+            runCatching {
+                stateManager.get().windowManager.updateViewLayout(view, itemsContainerLP)
+            }.onFailure { Log.w(TAG, "Unable to suspend overlay focus for app launch", it) }
+        }
+    }
+
+    private fun finishAppLaunchFocusGrace() {
+        inputCaptureSuppressedForAppLaunch = false
+        val view = containerView
+        if (
+            view != null &&
+            view.isAttachedToWindow &&
+            !stateManager.get().isBubbleExpanded.value
+        ) {
+            stateManager.get().updateDisplayBounds()
+            itemsContainerLP.flags = collapsedOverlayFlags()
+            runCatching {
+                stateManager.get().windowManager.updateViewLayout(view, itemsContainerLP)
+            }.onFailure {
+                Log.w(TAG, "Unable to finish overlay app-launch grace", it)
+            }
+            inputCaptureRecovery.reset()
+        }
+        scheduleForegroundCheck(delayMillis = 0L)
+    }
+
+    private fun scheduleForegroundCheck(
+        delayMillis: Long = FOREGROUND_CHECK_INTERVAL_MILLIS
+    ) {
+        if (inputCaptureSuppressedForAppLaunch || launchedTargetPackage == null) return
+        mainHandler.removeCallbacks(foregroundCheckRunnable)
+        mainHandler.postDelayed(foregroundCheckRunnable, delayMillis)
+    }
+
+    private fun checkTargetForeground() {
+        if (foregroundCheckInFlight || inputCaptureSuppressedForAppLaunch) {
+            scheduleForegroundCheck()
+            return
+        }
+        val targetPackage = launchedTargetPackage ?: return
+        val generation = foregroundCheckGeneration
+        foregroundCheckInFlight = true
+        scope.launch(Dispatchers.IO) {
+            val focusedPackage = stateManager.get().getFocusedPackageName()
+            mainHandler.post {
+                foregroundCheckInFlight = false
+                if (
+                    !initialized ||
+                    generation != foregroundCheckGeneration ||
+                    targetPackage != launchedTargetPackage
+                ) return@post
+
+                setMappingTargetActive(focusedPackage == targetPackage)
+                scheduleForegroundCheck()
+            }
+        }
+    }
+
+    private fun setMappingTargetActive(active: Boolean) {
+        if (mappingTargetIsActive == active) return
+        mappingTargetIsActive = active
+        stateManager.get().setMappingTargetActive(active)
+
+        val view = containerView ?: return
+        view.removeCallbacks(restoreInputCaptureRunnable)
+        inputCaptureRecovery.reset()
+        itemsContainerLP.flags = collapsedOverlayFlags()
+        runCatching {
+            stateManager.get().windowManager.updateViewLayout(view, itemsContainerLP)
+        }.onFailure { Log.w(TAG, "Unable to update foreground mapping state", it) }
+
+        if (!active) {
+            view.releasePointerCapture()
+            view.clearFocus()
+            updateMappingNotification(R.string.overlay_service_target_paused)
+            return
+        }
+
+        stateManager.get().updateDisplayBounds()
+        if (!stateManager.get().isBubbleExpanded.value) {
+            stateManager.get().startInputCapture()
+            scheduleInputCaptureRestore(delayMillis = 0L)
+        }
+    }
+
+    private fun collapsedOverlayFlags(): Int =
+        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+            WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+            if (
+                inputCaptureSuppressedForAppLaunch ||
+                stateManager.get().rootInputCaptureActive.value ||
+                !stateManager.get().overlayInputCaptureAllowed.value
+            ) {
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+            } else {
+                0
+            }
+
 
     private fun getFloatingBubbleView(
         onCLick: () -> Unit,
@@ -283,8 +525,10 @@ class FloatingBubbleService : Service() {
     @SuppressLint("ClickableViewAccessibility")
     private fun getItemsContainerView(
         onRemove: (Int) -> Unit
-    ): ComposeView {
-        val composeView = ComposeView(ContextCompat.getContextForLanguage(this))
+    ): PointerCaptureFrameLayout {
+        val localizedContext = ContextCompat.getContextForLanguage(this)
+        val rootView = PointerCaptureFrameLayout(localizedContext)
+        val composeView = ComposeView(localizedContext)
         composeView.layoutParams = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.MATCH_PARENT
@@ -295,41 +539,68 @@ class FloatingBubbleService : Service() {
                 val itemsContainerOpacity by stateManager.get().overlayOpacity.collectAsState()
                 val isBubbleExpanded by stateManager.get().isBubbleExpanded.collectAsState()
                 val isShootingMode by stateManager.get().isShootingMode.collectAsState()
-                val pointerOffset by stateManager.get().pointerOffset.collectAsState()
+                val pointerOffset = stateManager.get().pointerOffset
                 val keysConfig by stateManager.get().keysConfig.collectAsState()
+                val mumuProfile by stateManager.get().mumuProfile.collectAsState()
                 Box {
-                    if (!isBubbleExpanded && !isShootingMode) {
+                    val mappingTargetActive by stateManager.get()
+                        .mappingTargetActive.collectAsState()
+                    if (mappingTargetActive && !isBubbleExpanded && !isShootingMode) {
                         Image(///mouse pointer
-                            modifier = Modifier.offset {
-                                pointerOffset.let {
-                                    IntOffset(
-                                        it.x.toInt(),
-                                        it.y.toInt()
-                                    )
-                                }
+                            modifier = Modifier.graphicsLayer {
+                                // Read cursor state during the layer phase so
+                                // movement does not recompose or relayout the
+                                // complete full-screen overlay.
+                                translationX = pointerOffset.value.x
+                                translationY = pointerOffset.value.y
                             },
                             painter = painterResource(R.drawable.mouse),
                             contentDescription = stringResource(R.string.mouse_pointer)
                         )
                     }
-                    if (!isBubbleExpanded && itemsContainerOpacity == 0f)
+                    if (!isBubbleExpanded && (!mappingTargetActive || itemsContainerOpacity == 0f))
                         return@Box//do not compose if user set overlay opacity to 0
-                    ItemsContainer(
-                        Modifier.alpha(if (isBubbleExpanded) 1f else itemsContainerOpacity),
-                        appConfig = keysConfig,
-                        containerItems = draggableItems,
-                        onRemove = onRemove,
-                    )
+                    val profile = mumuProfile
+                    if (profile != null) {
+                        MumuOverlay(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .alpha(if (isBubbleExpanded) 1f else itemsContainerOpacity),
+                            profile = profile,
+                            isAiming = isShootingMode
+                        )
+                    } else {
+                        ItemsContainer(
+                            Modifier.alpha(if (isBubbleExpanded) 1f else itemsContainerOpacity),
+                            appConfig = keysConfig,
+                            containerItems = draggableItems,
+                            onRemove = onRemove,
+                        )
+                    }
                 }
             }
         }
-        composeView.setViewTreeLifecycleOwner(lifecycleOwner)
-        composeView.setViewTreeSavedStateRegistryOwner(lifecycleOwner)
-        composeView.isFocusable = true
-        composeView.isClickable = true
-        composeView.isFocusableInTouchMode = true
+        rootView.addView(composeView)
+        rootView.setViewTreeLifecycleOwner(lifecycleOwner)
+        rootView.setViewTreeSavedStateRegistryOwner(lifecycleOwner)
+        rootView.isFocusable = true
+        rootView.isClickable = true
+        rootView.isFocusableInTouchMode = true
+        rootView.addOnLayoutChangeListener { _, left, top, right, bottom,
+                                             oldLeft, oldTop, oldRight, oldBottom ->
+            val width = right - left
+            val height = bottom - top
+            if (width != oldRight - oldLeft || height != oldBottom - oldTop) {
+                stateManager.get().updateDisplayBounds(width, height)
+            }
+        }
         val focusChangeListener = ViewTreeObserver.OnWindowFocusChangeListener { hasFocus ->
-            if (!stateManager.get().isBubbleExpanded.value) {
+            if (
+                !inputCaptureSuppressedForAppLaunch &&
+                stateManager.get().overlayInputCaptureAllowed.value &&
+                !stateManager.get().rootInputCaptureActive.value &&
+                !stateManager.get().isBubbleExpanded.value
+            ) {
                 if (!hasFocus) inputCaptureRecovery.reportUnavailable()
                 scheduleInputCaptureRestore(
                     if (hasFocus) 0L else CAPTURE_RETRY_DELAY_MILLIS
@@ -337,16 +608,32 @@ class FloatingBubbleService : Service() {
             }
         }
         windowFocusChangeListener = focusChangeListener
-        composeView.viewTreeObserver.addOnWindowFocusChangeListener(focusChangeListener)
-        composeView.post {
-            composeView.setOnCapturedPointerListener { _, motionEvent ->
+        rootView.viewTreeObserver.addOnWindowFocusChangeListener(focusChangeListener)
+        rootView.onPointerCaptureChanged = { hasCapture ->
+            if (
+                !inputCaptureSuppressedForAppLaunch &&
+                stateManager.get().overlayInputCaptureAllowed.value &&
+                !stateManager.get().rootInputCaptureActive.value &&
+                !stateManager.get().isBubbleExpanded.value
+            ) {
+                if (hasCapture) {
+                    inputCaptureRecovery.reportAvailable()
+                    scheduleInputCaptureRestore(delayMillis = CAPTURE_RETRY_DELAY_MILLIS)
+                } else {
+                    inputCaptureRecovery.reportUnavailable()
+                    scheduleInputCaptureRestore(delayMillis = 0L)
+                }
+            }
+        }
+        rootView.post {
+            rootView.setOnCapturedPointerListener { _, motionEvent ->
                 stateManager.get().onMouseEvent(motionEvent)
             }
         }
-        composeView.setOnKeyListener { _, _, event ->
+        rootView.setOnKeyListener { _, _, event ->
             stateManager.get().onKeyEvent(event)
         }
-        return composeView
+        return rootView
     }
 
 
@@ -354,9 +641,18 @@ class FloatingBubbleService : Service() {
         return null
     }
 
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        if (!initialized) return
+        containerView?.post { stateManager.get().updateDisplayBounds() }
+    }
+
     override fun onDestroy() {
-        _isRunning.value = false
         initialized = false
+        foregroundCheckGeneration++
+        foregroundCheckInFlight = false
+        mainHandler.removeCallbacks(finishAppLaunchGraceRunnable)
+        mainHandler.removeCallbacks(foregroundCheckRunnable)
         containerView?.removeCallbacks(restoreInputCaptureRunnable)
         inputCaptureRecovery.reset()
         windowFocusChangeListener?.let { listener ->
@@ -365,6 +661,7 @@ class FloatingBubbleService : Service() {
                 ?.removeOnWindowFocusChangeListener(listener)
         }
         windowFocusChangeListener = null
+        containerView?.onPointerCaptureChanged = null
         removeAllViews()
         stateManager.get().onDestroy()
         lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
@@ -389,6 +686,7 @@ class FloatingBubbleService : Service() {
     ) {
         var opacity by remember { mutableFloatStateOf(0.5f) }
         val isExpanded by stateManager.get().isBubbleExpanded.collectAsState()
+        val mumuProfile by stateManager.get().mumuProfile.collectAsState()
         var itemsMenuVisible by remember { mutableStateOf(false) }
         var settingsLayoutVisible by remember { mutableStateOf(false) }
         LaunchedEffect(isExpanded) {
@@ -459,14 +757,16 @@ class FloatingBubbleService : Service() {
                         end.linkTo(bubble.end)
                     }) {
                     Column {
-                        IconButton(onClick = {
-                            itemsMenuVisible = !itemsMenuVisible
-                            settingsLayoutVisible = false
-                        }) {
-                            Icon(
-                                imageVector = Icons.Rounded.Add,
-                                contentDescription = stringResource(R.string.add_item)
-                            )
+                        if (mumuProfile == null) {
+                            IconButton(onClick = {
+                                itemsMenuVisible = !itemsMenuVisible
+                                settingsLayoutVisible = false
+                            }) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Add,
+                                    contentDescription = stringResource(R.string.add_item)
+                                )
+                            }
                         }
 
                         IconButton(onClick = {

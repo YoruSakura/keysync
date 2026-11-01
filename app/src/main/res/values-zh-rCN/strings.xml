@@ -1,11 +1,40 @@
 <resources>
-    <string name="app_name">Key Sync</string>
+    <string name="app_name">Key Sync 触控引擎</string>
 
     <string name="settings_title">设置</string>
     <string name="back">返回</string>
     <string name="save">保存</string>
     <string name="saved_successfully">设置已保存</string>
     <string name="key_configuration">按键配置</string>
+    <string name="input_mode">触控输入引擎</string>
+    <string name="input_mode_root">Root 原生触控</string>
+    <string name="input_mode_root_description">独占捕获键盘和鼠标，使用低延迟 Root 触控后端。Root 或原生捕获丢失时立即关闭映射。</string>
+    <string name="input_mode_shizuku">Shizuku / ADB</string>
+    <string name="input_mode_shizuku_description">无 Root 设备使用的兼容模式，需要 Shizuku 正在运行并已授权。</string>
+    <string name="root_service_status">Root 状态</string>
+    <string name="root_status_ready">已获得 Root，特权注入已就绪</string>
+    <string name="root_status_connecting">正在检查 Root 授权…</string>
+    <string name="root_status_unavailable">Root 不可用、被拒绝，或 Root 服务连接超时</string>
+    <string name="retry_root">重新检测 Root</string>
+    <string name="root_capture_idle">原生键鼠捕获未启动；从 KeySync 启动游戏后会开始接管</string>
+    <plurals name="root_capture_starting">
+        <item quantity="other">正在接管 %1$d 个 Android 输入设备…</item>
+    </plurals>
+    <plurals name="root_capture_active">
+        <item quantity="other">Root 正在独占控制 %1$d 个输入节点</item>
+    </plurals>
+    <string name="root_capture_no_android_devices">Root 捕获失败：Android 未识别到外接键盘或鼠标</string>
+    <string name="root_capture_root_lost">Root 服务丢失，原生捕获已停止</string>
+    <string name="root_capture_rejected">Root 服务拒绝了捕获请求</string>
+    <string name="root_capture_no_matched_nodes">Root 捕获失败：没有 evdev 节点与 Android 外接设备列表安全匹配</string>
+    <string name="root_capture_no_keyboard_node">Root 已匹配鼠标，但没有找到能接收 WASD 的键盘节点</string>
+    <string name="root_capture_no_mouse_motion_node">Root 已匹配设备，但没有找到鼠标移动节点</string>
+    <string name="root_capture_no_mouse_button_node">Root 已匹配设备，但没有找到鼠标主键节点</string>
+    <string name="root_capture_no_pair">Root 捕获失败：未能匹配并独占完整的键盘和鼠标组合</string>
+    <string name="root_capture_uinput_unavailable">Root 虚拟设备创建失败：/dev/uinput 不可用，或被 Root/SELinux 策略拦截</string>
+    <string name="root_capture_permission_denied">Root 或 SELinux 拒绝访问输入设备</string>
+    <string name="root_capture_busy">Root 输入捕获已被占用</string>
+    <string name="root_capture_native_error">Root 原生输入捕获失败</string>
     <string name="toggle_aiming_mode">切换瞄准模式：</string>
     <string name="fire_action">开火 / 攻击：</string>
     <string name="scope_action">瞄准 / 开镜：</string>
@@ -31,11 +60,23 @@
     <string name="touch_mode_mixed">点按切换 / 长按</string>
     <string name="reset_to_defaults">恢复默认设置</string>
     <string name="about">关于</string>
+    <string name="mapping_backup">映射备份</string>
+    <string name="mapping_backup_description">导出或恢复全局按键和所有应用映射。主线版与触控引擎版可以共用同一个 JSON 文件。</string>
+    <string name="export_backup">导出备份</string>
+    <string name="restore_backup">恢复备份</string>
+    <string name="restore_backup_warning">恢复会覆盖匹配的应用映射和全局按键设置，是否继续？</string>
+    <string name="restore">恢复</string>
+    <string name="cancel">取消</string>
+    <string name="backup_exported">映射备份已导出</string>
+    <string name="backup_imported">映射备份已恢复</string>
+    <string name="backup_failed">备份操作失败</string>
     <string name="version_format">版本：%1$s</string>
     <string name="github">GitHub</string>
     <string name="contact">联系方式</string>
 
     <string name="shizuku_not_running">请先启动 Shizuku 服务</string>
+    <string name="input_backend_unavailable">当前选择的输入后端不可用</string>
+    <string name="root_backend_unavailable">当前选择了 Root 模式，但 Root 尚未就绪，请在设置中检查 Root 状态</string>
     <string name="grant_permissions">请在系统设置中授予所需权限</string>
     <string name="open_settings">打开设置</string>
     <string name="connected_devices">已连接设备：</string>
@@ -78,4 +119,20 @@
     <string name="mouse_pointer">鼠标指针</string>
     <string name="overlay_service_channel">Key Sync 映射服务</string>
     <string name="overlay_service_running">%1$s 映射服务正在运行</string>
+    <string name="overlay_service_root_active">Root 正在独占控制键盘和鼠标</string>
+    <string name="overlay_service_shizuku_active">Shizuku / ADB 兼容映射已启用</string>
+    <string name="overlay_service_target_paused">目标应用已离开前台，按键映射已暂停</string>
+    <string name="mapping_stopped_root_lost">Root 已丢失，键位映射已关闭，没有切换到 Shizuku。</string>
+    <string name="mapping_stopped_root_capture_failed">Root 无法同时独占键盘和鼠标，键位映射已关闭。</string>
+    <string name="mapping_stopped_injection_failed">特权触控注入失败，键位映射已关闭。</string>
+    <string name="touch_core_title">Touch Core · Framework 实验版</string>
+    <string name="import_mumu">导入 MuMu 触控方案</string>
+    <string name="mumu_import_description">持续镜头触点、独立多指。为目标应用导入 JSON；原有键位保留，仅替换该应用的 MuMu 方案。</string>
+    <string name="mumu_import_warning">请确认目标应用包名。导入会停止当前映射，MuMu 方案优先于原有编辑器配置；在此移除方案即可恢复使用原有键位。</string>
+    <string name="target_package">目标应用包名</string>
+    <string name="mumu_imported">已导入 MuMu 方案，请从 KeySync 启动目标应用</string>
+    <string name="use_existing_mapping">移除 MuMu 方案 · 使用原有键位</string>
+    <string name="export_touch_diagnostics">导出 Touch Core 诊断</string>
+    <string name="mumu_cursor_mode_hint">鼠标模式 · 按 %1$s 切换瞄准</string>
+    <string name="mumu_aiming_mode_hint">瞄准模式 · 按 %1$s 显示鼠标</string>
 </resources>

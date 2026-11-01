@@ -11,7 +11,10 @@ interface EventInjector {
     fun injectPointer(pointerID: Int,o1: Offset,o2: Offset)
     fun injectPointer(pointerID: Int,position: Offset)
     fun updatePointerPosition(pointerID: Int, position:Offset)
+    fun rebasePointer(pointerID: Int, position: Offset)
+    fun injectSwipe(pointerID: Int, start: Offset, end: Offset)
     fun clear()
+    fun cancelSystemTouch() = clear()
     fun shutdown() = clear()
     fun releasePointer(pointerID: Int)
     suspend fun injected(pointerID: Int):Boolean

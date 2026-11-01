@@ -14,6 +14,7 @@ data class AppConfig(
     val deleteDataOnRemove: Boolean = Default.deleteDataOnRemove,
     val themePreference: ThemePreference = Default.themePreference,
     val languagePreference: LanguagePreference = Default.languagePreference,
+    val inputMode: InputMode = Default.inputMode,
     val cancellableTouchMode: TouchMode = Default.cancellableTouchMode,
     // Kept so configurations saved by older versions remain readable.
     // Regular buttons now always mirror the physical key press duration.
@@ -28,6 +29,7 @@ data class AppConfig(
             deleteDataOnRemove = false,
             themePreference = ThemePreference.SYSTEM_DYNAMIC,
             languagePreference = LanguagePreference.SYSTEM,
+            inputMode = InputMode.ROOT,
             cancellableTouchMode = TouchMode.TAP,
             normalBtnTouchMode = TouchMode.HOLD
         )

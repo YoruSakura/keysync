@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowLeft
@@ -30,10 +32,12 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,17 +48,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.constraintlayout.compose.ConstraintLayout
 import com.devoid.keysync.R
+import com.devoid.keysync.data.external.RootInputConnection
 import com.devoid.keysync.model.AppConfig
+import com.devoid.keysync.model.InputMode
 import com.devoid.keysync.model.LanguagePreference
 import com.devoid.keysync.model.ThemePreference
 import com.devoid.keysync.model.TouchMode
@@ -67,11 +74,20 @@ import kotlin.math.roundToInt
 fun SettingsScreen(
     modifier: Modifier = Modifier,
     appConfig: AppConfig = AppConfig.Default,
+    rootConnectionStatus: RootInputConnection.Status = RootInputConnection.Status.DISCONNECTED,
+    rootCaptureStatus: RootInputConnection.CaptureStatus = RootInputConnection.CaptureStatus.Idle,
+    onRetryRoot: () -> Unit = {},
+    onExportBackup: () -> Unit = {},
+    onImportBackup: () -> Unit = {},
+    onImportMumu: () -> Unit = {},
+    onExportTouchDiagnostics: () -> Unit = {},
+    mumuPackages: List<String> = emptyList(),
+    onRemoveMumu: (String) -> Unit = {},
     onSave: (AppConfig) -> Unit = {},
     onNavigateBack: () -> Unit = {},
     onNavigateAbout: () -> Unit = {}
 ) {
-    var newConfig by remember { mutableStateOf(appConfig) }
+    var newConfig by remember(appConfig) { mutableStateOf(appConfig) }
     val unknownKey = stringResource(R.string.unknown_key)
     val leftMouseButton = stringResource(R.string.left_mouse_button)
     val rightMouseButton = stringResource(R.string.right_mouse_button)
@@ -83,6 +99,7 @@ fun SettingsScreen(
         middleMouseButtonLabel = middleMouseButton
     )
     Scaffold(
+        modifier = modifier,
         topBar = {
             CenterAlignedTopAppBar(
                 title = {
@@ -112,6 +129,30 @@ fun SettingsScreen(
                 .verticalScroll(state = scrollState)
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (com.devoid.keysync.BuildConfig.TOUCH_CORE) {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(stringResource(R.string.touch_core_title), style = MaterialTheme.typography.titleLarge,
+                                color = MaterialTheme.colorScheme.primary)
+                            Text(stringResource(R.string.mumu_import_description), style = MaterialTheme.typography.bodyMedium)
+                            OutlinedButton(onClick = onImportMumu) { Text(stringResource(R.string.import_mumu)) }
+                            OutlinedButton(onClick = onExportTouchDiagnostics) { Text(stringResource(R.string.export_touch_diagnostics)) }
+                            mumuPackages.forEach { packageName ->
+                                Text(packageName, style = MaterialTheme.typography.bodyMedium)
+                                OutlinedButton(onClick = { onRemoveMumu(packageName) }) {
+                                    Text(stringResource(R.string.use_existing_mapping))
+                                }
+                            }
+                        }
+                    }
+                }
+                InputModeSettingsCard(
+                    selectedMode = newConfig.inputMode,
+                    rootConnectionStatus = rootConnectionStatus,
+                    rootCaptureStatus = rootCaptureStatus,
+                    onModeSelected = { newConfig = newConfig.copy(inputMode = it) },
+                    onRetryRoot = onRetryRoot
+                )
                 Card {
                     Column(
                         Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -410,6 +451,32 @@ fun SettingsScreen(
                         )
                     }
                 }
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.mapping_backup),
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = stringResource(R.string.mapping_backup_description),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(onClick = onExportBackup, modifier = Modifier.weight(1f)) {
+                                Text(stringResource(R.string.export_backup))
+                            }
+                            OutlinedButton(onClick = onImportBackup, modifier = Modifier.weight(1f)) {
+                                Text(stringResource(R.string.restore_backup))
+                            }
+                        }
+                    }
+                }
                 FilledTonalButton(modifier = Modifier.fillMaxWidth(), onClick = onNavigateAbout) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -427,6 +494,168 @@ fun SettingsScreen(
             }
         }
     }
+}
+
+@Composable
+private fun InputModeSettingsCard(
+    selectedMode: InputMode,
+    rootConnectionStatus: RootInputConnection.Status,
+    rootCaptureStatus: RootInputConnection.CaptureStatus,
+    onModeSelected: (InputMode) -> Unit,
+    onRetryRoot: () -> Unit
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.input_mode),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Column(modifier = Modifier.selectableGroup()) {
+                InputModeOption(
+                    selected = selectedMode == InputMode.ROOT,
+                    title = stringResource(R.string.input_mode_root),
+                    description = stringResource(R.string.input_mode_root_description),
+                    onClick = { onModeSelected(InputMode.ROOT) }
+                )
+                HorizontalDivider()
+                InputModeOption(
+                    selected = selectedMode == InputMode.SHIZUKU,
+                    title = stringResource(R.string.input_mode_shizuku),
+                    description = stringResource(R.string.input_mode_shizuku_description),
+                    onClick = { onModeSelected(InputMode.SHIZUKU) }
+                )
+            }
+            Text(
+                text = stringResource(R.string.root_service_status),
+                style = MaterialTheme.typography.titleMedium
+            )
+            val connectionText = when (rootConnectionStatus) {
+                RootInputConnection.Status.READY -> stringResource(R.string.root_status_ready)
+                RootInputConnection.Status.CONNECTING -> stringResource(R.string.root_status_connecting)
+                RootInputConnection.Status.DISCONNECTED -> {
+                    stringResource(R.string.root_status_unavailable)
+                }
+            }
+            val connectionColor = when (rootConnectionStatus) {
+                RootInputConnection.Status.READY -> MaterialTheme.colorScheme.primary
+                RootInputConnection.Status.CONNECTING -> MaterialTheme.colorScheme.onSurfaceVariant
+                RootInputConnection.Status.DISCONNECTED -> MaterialTheme.colorScheme.error
+            }
+            Text(
+                text = connectionText,
+                style = MaterialTheme.typography.bodyMedium,
+                color = connectionColor
+            )
+            if (rootConnectionStatus == RootInputConnection.Status.READY) {
+                Text(
+                    text = rootCaptureStatus.localizedDescription(),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (rootCaptureStatus is RootInputConnection.CaptureStatus.Failed) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                )
+            } else if (rootConnectionStatus != RootInputConnection.Status.CONNECTING) {
+                FilledTonalButton(onClick = onRetryRoot) {
+                    Icon(Icons.Rounded.Refresh, contentDescription = null)
+                    Text(
+                        modifier = Modifier.padding(start = 8.dp),
+                        text = stringResource(R.string.retry_root)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InputModeOption(
+    selected: Boolean,
+    title: String,
+    description: String,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .selectable(
+                selected = selected,
+                role = Role.RadioButton,
+                onClick = onClick
+            )
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        RadioButton(selected = selected, onClick = null)
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = 12.dp)
+        ) {
+            Text(text = title, style = MaterialTheme.typography.titleMedium)
+            Text(
+                modifier = Modifier.padding(top = 4.dp),
+                text = description,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun RootInputConnection.CaptureStatus.localizedDescription(): String = when (this) {
+    RootInputConnection.CaptureStatus.Idle -> stringResource(R.string.root_capture_idle)
+    is RootInputConnection.CaptureStatus.Starting -> {
+        pluralStringResource(
+            R.plurals.root_capture_starting,
+            candidateDeviceCount,
+            candidateDeviceCount
+        )
+    }
+    is RootInputConnection.CaptureStatus.Active -> {
+        pluralStringResource(R.plurals.root_capture_active, deviceCount, deviceCount)
+    }
+    is RootInputConnection.CaptureStatus.Failed -> stringResource(
+        when (reason) {
+            RootInputConnection.CaptureFailure.NO_ANDROID_INPUT_DEVICES -> {
+                R.string.root_capture_no_android_devices
+            }
+            RootInputConnection.CaptureFailure.ROOT_SERVICE_LOST -> R.string.root_capture_root_lost
+            RootInputConnection.CaptureFailure.SERVICE_REJECTED -> R.string.root_capture_rejected
+            RootInputConnection.CaptureFailure.NO_MATCHED_INPUT_NODES -> {
+                R.string.root_capture_no_matched_nodes
+            }
+            RootInputConnection.CaptureFailure.NO_KEYBOARD_NODE -> {
+                R.string.root_capture_no_keyboard_node
+            }
+            RootInputConnection.CaptureFailure.NO_MOUSE_MOTION_NODE -> {
+                R.string.root_capture_no_mouse_motion_node
+            }
+            RootInputConnection.CaptureFailure.NO_MOUSE_BUTTON_NODE -> {
+                R.string.root_capture_no_mouse_button_node
+            }
+            RootInputConnection.CaptureFailure.NO_COMPLETE_KEYBOARD_MOUSE_PAIR -> {
+                R.string.root_capture_no_pair
+            }
+            RootInputConnection.CaptureFailure.UINPUT_UNAVAILABLE -> {
+                R.string.root_capture_uinput_unavailable
+            }
+            RootInputConnection.CaptureFailure.DEVICE_PERMISSION_DENIED -> {
+                R.string.root_capture_permission_denied
+            }
+            RootInputConnection.CaptureFailure.CAPTURE_BUSY -> R.string.root_capture_busy
+            RootInputConnection.CaptureFailure.NATIVE_ERROR -> R.string.root_capture_native_error
+        }
+    )
 }
 
 @Composable
@@ -477,7 +706,11 @@ fun KeyConfigTextField(
         )
         OutlinedCard(border = BorderStroke(
             1.dp,
-            color = if (hasFocus)   Color.Cyan else MaterialTheme.colorScheme.outline
+            color = if (hasFocus) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.outline
+            }
         ),
             modifier = Modifier
                 .captureMouseButtonBinding(hasFocus, onMouseKeyEvent)

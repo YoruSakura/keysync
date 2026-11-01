@@ -36,19 +36,28 @@ android {
 
 
     defaultConfig {
-        applicationId = "com.devoid.keysync"
+        applicationId = "com.devoid.keysync.touch"
         minSdk = 29
         targetSdk = 35
-        versionCode = 5
-        versionName = "1.41-beta"
+        versionCode = 20
+        versionName = "1.56-touch-core-alpha"
+        buildConfigField("boolean", "TOUCH_CORE", providers.gradleProperty("touchCore").orElse("true").get())
+        val moveWindow = providers.gradleProperty("touchMoveWindowMillis").orElse("4").get().toLong()
+        require(moveWindow in 0..16)
+        buildConfigField("long", "TOUCH_MOVE_WINDOW_MILLIS", "${moveWindow}L")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        externalNativeBuild {
+            cmake {
+                cppFlags += listOf("-std=c++17", "-Wall", "-Wextra", "-Werror")
+            }
+        }
     }
 
     buildTypes {
         debug {
-            applicationIdSuffix = ".fix"
-            versionNameSuffix = "-fix"
+            versionNameSuffix = "-debug"
         }
         release {
             isMinifyEnabled = true
@@ -71,6 +80,14 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
+    }
+    sourceSets.getByName("test").resources.srcDir("../参考文档")
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
     }
 }
 
@@ -95,6 +112,7 @@ dependencies {
     implementation(libs.androidx.constraintlayout.compose)
     implementation(libs.api)
     implementation(libs.provider)
+    implementation(libs.libsu.service)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

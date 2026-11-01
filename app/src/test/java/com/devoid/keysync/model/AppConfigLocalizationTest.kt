@@ -20,7 +20,17 @@ class AppConfigLocalizationTest {
         val config = Json.decodeFromString<AppConfig>(legacyConfig)
 
         assertEquals(LanguagePreference.SYSTEM, config.languagePreference)
+        assertEquals(InputMode.ROOT, config.inputMode)
         assertEquals(TouchMode.HOLD, config.normalBtnTouchMode)
+    }
+
+    @Test
+    fun `Shizuku mode survives configuration serialization`() {
+        val saved = AppConfig.Default.copy(inputMode = InputMode.SHIZUKU)
+
+        val restored = Json.decodeFromString<AppConfig>(Json.encodeToString(saved))
+
+        assertEquals(InputMode.SHIZUKU, restored.inputMode)
     }
 
     @Test

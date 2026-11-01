@@ -19,3 +19,6 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+-keep class com.devoid.keysync.data.external.RootInputService { *; }
+-keep class com.devoid.keysync.data.external.RootEvdevNative { *; }
+-keep class com.devoid.keysync.data.external.RootVirtualGamepadNative { *; }
