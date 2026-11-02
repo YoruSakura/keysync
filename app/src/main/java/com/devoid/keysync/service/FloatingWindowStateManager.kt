@@ -10,6 +10,7 @@ import android.view.Choreographer
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.WindowManager
+import android.widget.Toast
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.geometry.Offset
@@ -21,6 +22,7 @@ import com.devoid.keysync.model.DraggableItem
 import com.devoid.keysync.model.DraggableItemType
 import com.devoid.keysync.model.InputMode
 import com.devoid.keysync.BuildConfig
+import com.devoid.keysync.R
 import com.devoid.keysync.domain.EventHandler
 import com.devoid.keysync.data.external.InputBackendRouter
 import com.devoid.keysync.data.external.RootInputConnection
@@ -29,6 +31,9 @@ import com.devoid.keysync.data.external.RootMouseScroll
 import com.devoid.keysync.domain.touch.MumuActionDispatcher
 import com.devoid.keysync.domain.touch.MumuProfile
 import com.devoid.keysync.domain.touch.MumuProfileCodec
+import com.devoid.keysync.domain.touch.MumuLayoutEditor
+import com.devoid.keysync.domain.touch.MumuLayoutTarget
+import com.devoid.keysync.domain.touch.TouchPoint
 import com.devoid.keysync.domain.touch.TouchCoreEventInjector
 import com.devoid.keysync.domain.touch.TouchViewport
 import com.devoid.keysync.domain.touch.touchPoint
@@ -43,6 +48,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import java.io.IOException
 import javax.inject.Inject
 
 class FloatingWindowStateManager @Inject constructor(
@@ -104,7 +110,7 @@ class FloatingWindowStateManager @Inject constructor(
                 mainHandler.post { onKeyEvent(keyCode, pressed) }; return
             }
             if (_isBubbleExpanded.value || !_mappingTargetActive.value) return
-            mumuDispatcher?.key(keyCode, pressed) ?: eventHandler.handleKeyEvent(
+            mumuDispatcher?.key(keyCode, pressed, softwareCursor.position.touchPoint()) ?: eventHandler.handleKeyEvent(
                 keyCode, if (pressed) KeyEvent.ACTION_DOWN else KeyEvent.ACTION_UP)
         }
 
@@ -180,6 +186,11 @@ class FloatingWindowStateManager @Inject constructor(
 
     private val _mumuProfile = MutableStateFlow<MumuProfile?>(null)
     val mumuProfile = _mumuProfile.asStateFlow()
+    private var mumuIdentity: Pair<String, String>? = null
+    private val _mumuLayoutEdits = MutableStateFlow<Map<MumuLayoutTarget, TouchPoint>>(emptyMap())
+    val mumuLayoutEdits = _mumuLayoutEdits.asStateFlow()
+    private val _mumuLayoutSaving = MutableStateFlow(false)
+    val mumuLayoutSaving = _mumuLayoutSaving.asStateFlow()
 
     private val _isShootingMode = MutableStateFlow(false)
     val isShootingMode = _isShootingMode.asStateFlow()
@@ -240,6 +251,8 @@ class FloatingWindowStateManager @Inject constructor(
         mumuDispatcher?.close()
         mumuDispatcher = null
         _mumuProfile.value = null
+        mumuIdentity = null
+        _mumuLayoutEdits.value = emptyMap()
         observeShootingMode()
         eventHandler.updateKeyMapping(emptyList())
         _containerItems.value = emptyList()
@@ -255,7 +268,7 @@ class FloatingWindowStateManager @Inject constructor(
             val savedSensitivity = dataStoreManager
                 .getFloat(DataStoreManager.POINTER_SENSITIVITY)
                 .first()
-            val mumuText = dataStoreManager.getMumuProfile(packageName).first()
+            val savedMumu = dataStoreManager.getMumuLibraries().first()[packageName]?.selectedProfile
 
             if (generation != configLoadGeneration) return@launch
 
@@ -265,13 +278,14 @@ class FloatingWindowStateManager @Inject constructor(
             eventHandler.setCancelableTouchMode(appConfig.cancellableTouchMode)
             _containerItems.value = buttons
             eventHandler.updateKeyMapping(buttons)
-            if (mumuText != null && eventInjector is TouchCoreEventInjector) {
+            if (savedMumu != null && eventInjector is TouchCoreEventInjector) {
                 // Invalid stored profiles stop this launch rather than silently using unrelated mappings.
-                val profile = runCatching { MumuProfileCodec.decode(mumuText) }.getOrElse {
+                val profile = runCatching { MumuProfileCodec.decode(savedMumu.json) }.getOrElse {
                     stopMapping(MappingFailure.INPUT_INJECTION_FAILED)
                     return@launch
                 }
                 _mumuProfile.value = profile
+                mumuIdentity = packageName to savedMumu.id
                 mumuDispatcher = MumuActionDispatcher(profile, eventInjector as TouchCoreEventInjector,
                     TouchViewport(maximumPointerPosition.x + 1.0, maximumPointerPosition.y + 1.0))
                 observeShootingMode()
@@ -339,17 +353,49 @@ class FloatingWindowStateManager @Inject constructor(
     }
 
     fun onFloatingBubbleClick() {
+        if (_mumuLayoutSaving.value) return
+        if (_isBubbleExpanded.value && _mumuLayoutEdits.value.isNotEmpty()) {
+            val (packageName, id) = mumuIdentity!!
+            val profile = MumuLayoutEditor.apply(_mumuProfile.value!!, _mumuLayoutEdits.value)
+            _mumuLayoutSaving.value = true
+            scope.launch {
+                try {
+                    dataStoreManager.updateMumuLayout(packageName, id, profile.source.toString())
+                    mumuDispatcher?.close()
+                    _mumuProfile.value = profile
+                    mumuDispatcher = MumuActionDispatcher(profile, eventInjector as TouchCoreEventInjector,
+                        TouchViewport(maximumPointerPosition.x + 1.0, maximumPointerPosition.y + 1.0))
+                    observeShootingMode()
+                    _mumuLayoutEdits.value = emptyMap()
+                    _isBubbleExpanded.value = false
+                } catch (_: IOException) {
+                    Toast.makeText(context, context.getString(R.string.mumu_layout_save_failed), Toast.LENGTH_LONG).show()
+                } finally {
+                    _mumuLayoutSaving.value = false
+                }
+            }
+            return
+        }
         _isBubbleExpanded.value = !_isBubbleExpanded.value
         if (!_isBubbleExpanded.value) {
             eventHandler.updateKeyMapping(containerItems.value)
         }
     }
 
+    fun moveMumuTarget(target: MumuLayoutTarget, point: TouchPoint) {
+        _mumuLayoutEdits.value = _mumuLayoutEdits.value + (target to point)
+    }
+
+    fun cancelMumuLayout() {
+        _mumuLayoutEdits.value = emptyMap()
+        onFloatingBubbleClick()
+    }
+
     fun onKeyEvent(keyEvent: KeyEvent): Boolean {
         if (_isBubbleExpanded.value || !_mappingTargetActive.value)
             return false
         if (keyEvent.action != KeyEvent.ACTION_DOWN && keyEvent.action != KeyEvent.ACTION_UP) return false
-        return mumuDispatcher?.key(keyEvent.keyCode, keyEvent.action == KeyEvent.ACTION_DOWN)
+        return mumuDispatcher?.key(keyEvent.keyCode, keyEvent.action == KeyEvent.ACTION_DOWN, softwareCursor.position.touchPoint())
             ?: eventHandler.handleKeyEvent(keyEvent)
     }
 
@@ -582,7 +628,7 @@ class FloatingWindowStateManager @Inject constructor(
             cancelIdleShootingPointerRelease()
             return true
         }
-        val handled = mumuDispatcher?.let { it.move(effectiveOffset.touchPoint()); true }
+        val handled = mumuDispatcher?.let { it.move(effectiveOffset.touchPoint(), softwareCursor.position.touchPoint()); true }
             ?: eventHandler.handlePointerMove(effectiveOffset)
         if (handled && isShootingMode.value) {
             scheduleIdleShootingPointerRelease()

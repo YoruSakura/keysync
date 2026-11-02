@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import android.view.InputEvent
 import android.view.MotionEvent
+import android.view.KeyEvent
 import com.devoid.keysync.domain.EventHandler
 import com.devoid.keysync.domain.EventInjectorImpl
 import com.devoid.keysync.BuildConfig
@@ -70,7 +71,8 @@ class InputBackendRouter(
 
     @Synchronized
     private fun injectSafely(event: InputEvent, waitForResult: Boolean): Boolean {
-        if (failedStream) return false
+        // Held macro keys must still receive UP when a touch injection fails.
+        if (failedStream && !(event is KeyEvent && event.action == KeyEvent.ACTION_UP)) return false
 
         val motionEvent = event as? MotionEvent
         val action = motionEvent?.actionMasked

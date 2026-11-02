@@ -55,6 +55,54 @@ class MumuProfileTest {
         assertEquals(TouchPoint(.9193481430762263, .8481818598679383), decoded.point)
     }
 
+    @Test fun `layout calibration moves touch and marker together and preserves unrelated mappings and policies`() {
+        val profile = MumuProfileCodec.decode(original())
+        val button = profile.buttons.first()
+        val joystick = profile.joystick!!
+        val calibrated = MumuLayoutEditor.apply(profile, mapOf(
+            MumuLayoutTarget(button.icon.mappingIndex, MumuLayoutField.WORK) to TouchPoint(.9, .8),
+            MumuLayoutTarget(joystick.icon.mappingIndex, MumuLayoutField.WORK) to TouchPoint(444.0 / 3199, 1754.0 / 2135)
+        ))
+        assertEquals(TouchPoint(.9, .8), calibrated.buttons.first().point)
+        assertEquals(calibrated.buttons.first().point, calibrated.buttons.first().icon.point)
+        val center = TouchViewport(3200.0, 2136.0).resolve(calibrated.joystick!!.center)
+        assertEquals(444.0, center.x, 1e-9)
+        assertEquals(1754.0, center.y, 1e-9)
+        assertEquals(joystick.radius, calibrated.joystick.radius, 0.0)
+        assertEquals(profile.source["info"], calibrated.source["info"])
+        assertEquals(profile.source["param"], calibrated.source["param"])
+        profile.source.getValue("keymaps").jsonArray.forEachIndexed { index, originalMapping ->
+            val changedMapping = calibrated.source.getValue("keymaps").jsonArray[index]
+            if (index != button.icon.mappingIndex && index != joystick.icon.mappingIndex) {
+                assertEquals(originalMapping, changedMapping)
+            } else {
+                assertEquals(originalMapping.jsonObject - setOf("rel_work_position", "icon"),
+                    changedMapping.jsonObject - setOf("rel_work_position", "icon"))
+            }
+        }
+    }
+
+    @Test fun `macro calibration edits the actual click independently of its icon and executes at tablet coordinates`() = runBlocking {
+        val original = MumuProfileCodec.decode(original())
+        val macro = original.macros.single()
+        val calibrated = MumuLayoutEditor.apply(original, mapOf(
+            MumuLayoutTarget(macro.icon.mappingIndex, MumuLayoutField.PRESS, 0) to TouchPoint(.1, .15)
+        ))
+        assertEquals(macro.icon, calibrated.macros.single().icon)
+        assertEquals(MacroAction.ExitStaring, calibrated.macros.single().press.last())
+        val backend = RecordingTouchBackend()
+        val injector = injector(backend)
+        val dispatcher = MumuActionDispatcher(calibrated, injector, TouchViewport(3200.0, 2136.0))
+        dispatcher.key(KeyEvent.KEYCODE_M, true)
+        dispatcher.key(KeyEvent.KEYCODE_M, false)
+        dispatcher.awaitIdle()
+        val position = backend.frames.first().contacts.single().position
+        assertEquals(319.9, position.x, 1e-9)
+        assertEquals(320.25, position.y, 1e-9)
+        assertEquals(TouchAction.UP, backend.frames.last().action)
+        dispatcher.close(); injector.pipeline.shutdown()
+    }
+
     @Test fun `camera joystick attack coexist and M releases only macro and camera`() = runBlocking {
         val backend = RecordingTouchBackend()
         val injector = injector(backend)

@@ -24,7 +24,8 @@ data class MappingBackup(
     val mappings: Map<String, List<DraggableItem>>,
     val pointerSensitivity: Float,
     val overlayOpacity: Float,
-    val mumuProfiles: Map<String, String> = emptyMap()
+    val mumuProfiles: Map<String, String> = emptyMap(),
+    val mumuLibraries: Map<String, MumuProfileLibrary> = emptyMap()
 )
 
 @Serializable
@@ -55,7 +56,7 @@ data class MappingKeySettings(
 
 object MappingBackupCodec {
     const val FORMAT = "keysync-keymap-backup"
-    const val SCHEMA_VERSION = 2
+    const val SCHEMA_VERSION = 3
     const val MAX_BYTES = 4 * 1024 * 1024
     private val packagePattern = Regex("[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)+")
     private val json = Json { prettyPrint = true; encodeDefaults = true; ignoreUnknownKeys = true }
@@ -95,13 +96,17 @@ object MappingBackupCodec {
         require(backup.addedPackages.distinct().size == backup.addedPackages.size)
         require(backup.mumuProfiles.size <= 1024)
         require(backup.schemaVersion >= 2 || backup.mumuProfiles.isEmpty())
-        (backup.addedPackages + backup.mappings.keys + backup.mumuProfiles.keys).forEach {
+        require(backup.mumuLibraries.size <= 1024)
+        require(backup.schemaVersion >= 3 || backup.mumuLibraries.isEmpty())
+        require(backup.mumuProfiles.keys.intersect(backup.mumuLibraries.keys).isEmpty())
+        (backup.addedPackages + backup.mappings.keys + backup.mumuProfiles.keys + backup.mumuLibraries.keys).forEach {
             require(it.length <= 255 && packagePattern.matches(it)) { "Invalid app package" }
         }
         require(backup.pointerSensitivity.isFinite() && backup.pointerSensitivity in 0f..1f)
         require(backup.overlayOpacity.isFinite() && backup.overlayOpacity in 0f..1f)
         require(backup.keySettings.buttonScale.isFinite() && backup.keySettings.buttonScale in 0f..2f)
         backup.mumuProfiles.values.forEach(MumuProfileCodec::decode)
+        backup.mumuLibraries.values.forEach(MumuProfileLibrary::validate)
         backup.mappings.values.forEach { items ->
             require(items.size <= 2048 && items.map { it.id }.distinct().size == items.size)
             items.forEach { item ->

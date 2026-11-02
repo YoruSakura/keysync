@@ -2,11 +2,14 @@ package com.devoid.keysync.domain.touch
 
 import android.annotation.SuppressLint
 import android.view.InputDevice
+import android.view.InputEvent
+import android.view.KeyEvent
+import android.view.KeyCharacterMap
 import android.view.MotionEvent
 
 /** Encodes display-logical pixels. Android InputReader rotation is NOT MuMu raw ABS rotation. */
 class FrameworkTouchBackend(
-    private val inject: (MotionEvent, Boolean) -> Boolean,
+    private val inject: (InputEvent, Boolean) -> Boolean,
     private val cancelStream: () -> Boolean
 ) : TouchBackend {
     @SuppressLint("PrivateApi")
@@ -42,4 +45,9 @@ class FrameworkTouchBackend(
     }
 
     override fun cancel(): Boolean = cancelStream()
+
+    override fun key(key: SimulatedKey, pressed: Boolean, downTime: Long, eventTime: Long): Boolean =
+        inject(KeyEvent(downTime, eventTime, if (pressed) KeyEvent.ACTION_DOWN else KeyEvent.ACTION_UP,
+            key.code, 0, 0, KeyCharacterMap.VIRTUAL_KEYBOARD, key.scanCode, KeyEvent.FLAG_FROM_SYSTEM,
+            InputDevice.SOURCE_KEYBOARD), true)
 }

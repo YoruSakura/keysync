@@ -1,9 +1,13 @@
 # KeySync Fix 项目记忆
 
-> 更新日期：2026-11-01（Asia/Shanghai）
+> 更新日期：2026-11-02（Asia/Shanghai）
 > 用途：为后续 Codex session 保留项目背景、已完成工作、本地未提交状态和待验证事项。
 
-> **当前交接入口：[MIGRATION.md](MIGRATION.md)。项目已通过同步软件转向物理机，虚拟机 Android 构建残留已清理。下方早期路径、分支、版本和“无法连接设备”的说明保留作历史；当前状态见本文末尾“环境交接（2026-11-01）”及迁移文档，物理机需要重新确认实际环境。**
+正式版发布补记（2026-11-02）：用户已确认当前 fork 稳定，授权直接合并、推送 GitHub 并只保留一个正式包。本轮版本为 **1.60 / versionCode 27**，保留包名和迁移签名，使用 Release/R8；此前“未授权推送／仅本地／实验版”的段落均为历史。发布和验证状态统一见 [docs/VALIDATION.md](docs/VALIDATION.md)。
+
+> **最新：2026-11-02 已安装 1.60 / versionCode 26，开始支持明日方舟的光标联合宏与 Observe。当前选择 `arknights-tablet-3200x2136`；终末地 `WASD-3200x2136` 保留。用户已确认 C、F、D、A、S 正常；右键划火柴按旧方案保留，不再作为必测。具体见本文末尾和 MIGRATION.md 第 16 节。下方版本记录为历史。**
+
+> **当前交接入口：[MIGRATION.md](MIGRATION.md)。项目已转向物理机，当前平板安装 1.59，使用 2.4G 鼠标和无线 ADB。用户已确认松键即停、WASD 四方向正常；最新版本支持整套 MuMu 触点校准，详见本文末尾。下方早期路径、分支、版本和“无法连接设备”的说明保留作历史。**
 
 ## 项目目标
 
@@ -364,3 +368,74 @@ export ANDROID_SDK_ROOT="/home/sakura/.cache/keysync-build/android-sdk"
 - 用户要求把当前版本代码提交到本地 fork。完整源码、构建配置、测试、参考 JSON、Touch Core 文档和交接记忆一并保存为 `codex/touch-engine-rewrite` 上的本地提交；最新提交以 `git log -1` 为准，前文的旧 HEAD 与未提交状态为历史记录。
 - 4 个 `artifacts/*.apk` 继续保留在磁盘，不纳入源码提交；签名密钥、机器配置与构建缓存保持忽略。没有推送远端或发布版本。
 - 本次仅保存现有版本，代码未再变更；验证沿用上节已完成的测试、构建和用户实体 Alt／鼠标实测结果。
+
+## MuMu 滚轮按模式滑动与缩放（2026-11-01，1.57）
+
+- 用户要求先记录 MuMu 高级策略缺口，再优先修复滚轮：鼠标模式滚动列表，瞄准／开火模式缩放镜头。已明确“自动切换”仅指滚轮根据当前模式选行为，不包括自动识别页面或自动切换 Alt。
+- 已新增 `docs/TODO.md`，记录 WASD 分段策略、镜头等待／增益公式、MuMu 滚轮精确参数、键鼠透传、Fire interval、宏时序、外观和剩余实机验收；当前 JSON 关闭的功能不作为本轮已启用缺口。
+- 原 MuMu 瞄准模式直接忽略滚轮；鼠标模式反复调用 `injectSwipe` 会取消同一指针的上一段延迟手势，快速滚动可能退化为 DOWN→UP。新 `WheelGestureController` 在 dispatcher 层累积滚轮位移，逐帧移动同一触点，越界时只释放并重建自身触点；零位移边缘不生成点击。
+- 瞄准模式滚轮生成中心水平双指张开／合拢。暂时抬起 camera 实际触点，缩放期间不处理镜头 MOVE，但保留逻辑瞄准状态、WASD 和攻击触点；缩放结束后下一次鼠标移动自然重建 camera。模式切换、reset、旋转和 close 取消滚轮任务并释放其触点。原编辑器滚轮路径未改。
+- 新手势采用 KeySync 明确约定的距离与时序，不声称已还原 MuMu 的 `wheel_policy` 公式。版本升级 `.touch` / 21 / `1.57-touch-core-alpha-debug`；旧 Debug 证书覆盖安装，安装前后偏好逐字节一致；普通 ADB 操作未使用 root shell。
+- 相关 21 项测试通过：Wheel 4、MumuProfile 9、GestureController 5、MappingBackup 3；Lint 0 errors / 77 warnings（另 6 条信息）；Debug、Release/R8、四 ABI JNI 均成功。用户已开启物理鼠标，游戏重新从 KeySync 启动，日志确认键鼠同时捕获；实际列表／缩放反馈待记录。
+- 本轮 APK 为 `artifacts/keysync-touch-core-1.57-wheel.apk`，SHA-256 `33df198bca75312da567474b3233bab277981736c80a83d59d667a0933c32180`。原有 APK 和本地提交 `8d9de43` 保留；本轮修改尚未提交或推送。
+- 用户随后实测反馈：**列表滑动和瞄准模式镜头缩放都正常**，但列表方向希望符合普通 PC 手感，避免苹果自然滚动的反向。已将 MuMu 列表改为上滚→页面向上（手指下划）、下滚→页面向下；镜头仍上滚拉近、下滚拉远。此项用户新要求取代早期“上滚=上划”的约定；旧编辑器路径暂未迁移。
+- 为区分方向修订，最终版本调整为 `.touch` / 22 / `1.57.1-touch-core-alpha-debug`，并更新滚轮方向及边缘回归测试。
+- 方向修订后再次运行 4 项滚轮测试、Lint 和 Debug / Release/R8 构建，全部成功，Lint 仍为 0 errors / 77 warnings。最终包 `artifacts/keysync-touch-core-1.57.1-wheel.apk` 的 SHA-256 为 `7a9b5550a85bfed6b137401b5d76d1d46459c88dfd9b0d9aec2148a74b412cbf`，已核对旧 Debug 证书并覆盖安装。两种游戏手势的用户实测属于此前 1.57；最终列表方向由触控帧测试确认，未要求用户重复测试。
+
+## 多游戏独立管理多份 MuMu 方案（2026-11-01，1.58）
+
+- 用户要求添加任意游戏后，可给该游戏导入多份 MuMu JSON，退出游戏到 KeySync 选择后再启动；各游戏的方案库和当前选择独立，不要求游戏内热切换。新增主页每个游戏图标下的“方案”入口，导入目标直接绑定所选游戏，不从文件名猜包名、不限定终末地。
+- 新增 `MumuProfileLibrary` / `SavedMumuProfile`：每份保存独立 ID、名称和完整 JSON，每个游戏保存 nullable `selectedId`（null 使用原编辑器）。新导入自动选中；可重命名、逐份删除和保留 JSON 切回原编辑器。删除当前方案后明确回到原编辑器，不自动选另一份。导入、选择或删除当前方案停止旧映射，下次从 KeySync 启动游戏重新加载；重命名不影响输入。
+- `MumuProfileStore` 保存到 `mumu_library_<package>`；DataStore 的 `MumuProfileMigration` 在首次访问时原子迁移旧 `mumu_profile_<package>`，原 JSON 包装为名为“MuMu”且保持选中的方案，并移除旧键。引擎继续通过 `getMumuProfile(package)` 获取该游戏的当前 JSON，原触控调度、滚轮方向和动作支持范围不变。删除游戏时遵循现有 deleteDataOnRemove 设置，启用后也删除该游戏全部 MuMu 方案。
+- 备份扩展 schema v3，完整保存所有 JSON、名称、ID 和选择；继续恢复 v1/v2，v2 单方案自动转换。恢复只替换备份涉及游戏的方案库，其他游戏保留。无方案库时仍可导出 v1；包含方案库时需要 1.58 或更新版本恢复，备份仍受 4MiB 文件上限约束。
+- 16 项相关 JVM 测试通过：新存储/迁移/跨游戏隔离/多方案选择与删除/备份恢复 4 项、现有备份 codec 3 项、MuMu parser 9 项。Debug、Release/R8、四 ABI JNI 和 Lint 均通过，Lint 0 errors / 77 warnings（另 6 条信息）；未扩大全量测试范围。
+- 通过普通 ADB / 应用自身 run-as 覆盖安装，并核对真实设备 DataStore：迁移前后原 JSON 逐字相同，保持选中，所有其他键位/设置一致。用户解锁系统文件选择器后，已通过真实界面导入第二份 JSON、重命名、两份 JSON 互切、切回编辑器、删除当前方案并验证回到编辑器。测试方案和临时文件已清理，重新选中原方案；重启应用及最终 APK 再次覆盖后，偏好与最初迁移状态完全一致。
+- 本轮未使用 adb root / su / root shell。尝试从 KeySync 启动游戏补查运行状态时，物理鼠标已不在当前输入设备列表，映射服务未持续运行；游戏显示服务器要求重新登录。没有在此状态下声称重新完成实体键鼠验收，也未改变捕获白名单或处理用户游戏登录。
+- 最终包：`artifacts/keysync-touch-core-1.58-profiles.apk`，`.touch` / versionCode 23 / `1.58-touch-core-alpha-debug`，沿用迁移 Debug 证书；SHA-256 `8f6fae1737accdb2d925e5d0578af6c8aa12d512ef24dd60019fbade43516d97`。已覆盖安装，保留原配置。原滚轮修复及本轮多方案代码尚未再次提交、推送或发布；本地基线仍是 `8d9de43`。
+
+## 平板 MuMu 轮盘位置校准（2026-11-01）
+
+- 用户反馈单按 WASD 斜走。核对原 JSON、当前所选 MuMu profile 和引擎：键码确为 W/A/S/D，单轴向量按屏幕上下左右生成。实机截图直接显示导入圆心在游戏轮盘圆心右上方；3200×2136 上原触控圆心为 (483.3065, 1629.9976)，游戏静止轮盘圆心约 (444, 1754)。游戏屏幕全幅且方向正常；JSON 没有来源屏幕尺寸，不能把该游戏 UI 在不同屏幕比例上的布局当作纯归一化缩放。
+- 本轮采用配置校准，不改通用 WASD 方向算法、不添加游戏包名或坐标硬编码。由当前已导入的原 JSON 复制 `artifacts/com.hypergryph.endfield-平板轮盘校准-3200x2136.json`，将 Swipehold 的 rel_work_position 与 icon.rel_position 改为 x=444/3199、y=1754/2135；半径和其他字段逐项比较保持相同。原参考 JSON 未改。
+- 通过应用正常文件选择器导入为 `WASD-3200x2136` 并选中。已用普通 ADB / 应用 run-as 核对：旧 profile 完整保留、新 profile JSON 与校准文件一致，其他所有偏好未改变。当前版本仍为 1.58 / versionCode 23，不需新 APK，未重新运行构建或添加低价值测试。
+- 校准后目标点为 W=(444,1640.218)、A=(330.218,1754)、S=(444,1867.782)、D=(557.782,1754)，半径113.782px。这是此平板当前游戏 UI 的专用方案，不能当作任意游戏/分辨率的全局修复。
+- 首次从 KeySync 重新启动游戏补查时，外置蓝牙鼠标已从 dumpsys input 消失，映射服务未持续运行，游戏也显示服务器重连失败。用户随后已恢复鼠标和游戏；从 KeySync 重新启动映射后，实机截图确认 WASD 标记圆心已与实际游戏轮盘重合。已请求实体 W/A/S/D 验证，四方向行走结果尚待反馈，不能将几何校准直接写成全部方向实机通过。无 adb root / su / root shell。临时下载文件已移除，导入后的方案数据保留。
+
+## Root 捕获交接修复与无线调试（2026-11-02，1.58.1）
+
+- 校准后用户反馈“按一下变成持续性输入”。旧版实机证据指向独占交接：S DOWN 已在约 23:00:22.928 进入 Android，Root 约 23:00:22.947 才捕获键盘，之后 S UP 被独占接走；系统 `sg-input` 持续产生 S ACTION_DOWN，repeatCount 超过 11,000，InputReader 的 Xiaomi Keyboard 留有 1 个按下键。暂停映射、回到 KeySync 后由用户短按并松开 S，已确认残留清零。
+- `RootEvdevCapture.cpp` 的 `open_safe_devices()` 现在只打开并分类允许节点。新交接逻辑读取 `EVIOCGKEY`，按住时保持未独占，每 10ms 检查，直到键鼠按钮全部释放；清掉已传给 Android 的 fd 队列后统一 grab，并再次读取按钮状态。若交接中发生按下，解除所有 grab，让这一按完整经过 Android 后再交接。保留取消/错误清理流程，不增加超时自动抬指，不改键码、白名单、方向或滚轮算法。
+- `.touch` 升为 versionCode 24 / `1.58.1-touch-core-alpha-debug`，APK 为 `artifacts/keysync-touch-core-1.58.1-capture-handoff.apk`，SHA-256 `aaf42b47a05d8e7405cb3dfde2758d6d2b4d14e0b75914282bac2da4150f67ce`；沿用迁移 Debug 证书覆盖安装。升级前后偏好逐字节一致，校准方案保持选中。
+- 修复构建已通过 GestureController 5、MumuProfile 9、RootInputDeviceClassifier 2、InputCaptureRecoveryController 1，共 17 项测试；Lint 0 errors / 77 warnings（另 6 条信息），Debug、Release/R8、四 ABI JNI 成功。2026-11-02 恢复无线调试时核对现有测试报告和 APK 指纹，没有重复构建。
+- 此前按住 W 启动测试中，一轮因蓝牙鼠标休眠未捕获，另一轮捕获成功但未出现 `Waiting for keyboard and mouse buttons to be released before capture` 日志，因此不能声称已实测覆盖等待分支；松键停止和四方向直走结果一直未确认。不要把中断会话或静态截图当作验收通过。
+- 用户已为连接稳定改用 2.4G 鼠标，无线 ADB 已配对。11:02 起现场重新枚举到唯一设备 `10.1.1.115:45941`，型号仍为 25053RP5CC；无线端口可能变化，下次仍先运行 `adb devices -l`。普通 `dumpsys input` 确认接收器 `Xiaomi Mi USB Receiver Mouse`（event15）、接收器键盘（event19）和 `Xiaomi Keyboard`（event8），当时系统没有按键残留。
+- 从 KeySync 启动游戏后，11:07:09.647 日志确认上述三个节点成功捕获，无需新增白名单。通过应用 run-as 读取方案库，原 `MuMu` 与 `WASD-3200x2136` 均保留，后者仍选中；游戏已进入可走动的室内场景。本轮已请求用户实体短按 W/A/S/D，验证松键即停及四方向，等待反馈。
+- 全程普通无线 ADB / 应用 run-as，没有 adb root、su 或 root shell；应用继续使用原有 RootService。当前本地基线仍为 `8d9de43`，后续源码与文档未再次提交、推送或发布。
+
+## 整套 MuMu 布局校准（2026-11-02，1.59）
+
+- 用户确认 1.58.1 **松键即停、WASD 四方向正常**；补充原 JSON 来自 **1920×1080**，并指出其他按键也错位。平板为 3200×2136，原来直接归一化铺满屏幕的坐标不适应游戏在不同比例下重新排布 HUD。来源分辨率不是足以推导任意游戏新布局的公式；本轮添加按方案直接校准实际触点，未引入未经证实的通用自动缩放/锚定。
+- 新增 `MumuLayoutEditor.kt` 和 `ui/overlay/MumuLayoutCalibration.kt`；点开悬浮球即进入校准，停止捕获并释放旧触点。实际触点用十字显示，拖动普通按键、Fire、Swipehold 和 Staring 同步修改 rel_work_position / icon.rel_position；Tip 和宏图标只改显示位置，宏 press/release 中每一个 click_rel 独立编辑。箭头可选中重叠目标，保存更新当前游戏指定 profile ID 的 JSON 并重建 dispatcher，取消保留原保存数据。错误保存只在 IO 边界提示并保留草稿。
+- codec 的 MumuIcon 保留 keymaps 索引供编辑，原策略、键码、名称、ID、其他方案和游戏不变；备份 v3 已直接包含这些 JSON 变化。显示点与触控统一 width−1 / height−1；没有改摇杆方向、半径或捕获白名单。
+- 16 项相关测试通过（MuMu 11、MumuProfileStore 5），覆盖实际宏落点、轮盘/按键编辑与策略保留、方案隔离和备份；Lint 0 errors / 77 warnings / 6 informational，Debug / Release/R8、四 ABI JNI 构建通过。最终 APK `artifacts/keysync-touch-core-1.59-layout-calibration.apk`，SHA-256 `f0f0625ca97b579ecd610df340afdbf42526f15059bf4276e6c888e245899bad`，`.touch` / 25 / `1.59-touch-core-alpha-debug`，沿用迁移 Debug 证书覆盖安装。安装前后偏好逐字节一致。
+- 用户先在新界面调整了十余个位置，后明确授权助手继续、本人暂不操作。已将其调整保存为 checkpoint，没有丢弃。实机临时拖动 R 后取消，DataStore 方案库与选择完全不变；随后将攻击改为约 (2674.65,1764.87)、Tab 锁定改为 (2150.77,1969.82)，保存后核对实际坐标及显示同步。原 MuMu 完整保留，轮盘仍为 (444,1754)，所有无关偏好及 info/param 不变。副本仍名为 `WASD-3200x2136`，已包含其他键位修改；导出文件 `artifacts/com.hypergryph.endfield-平板布局校准-3200x2136.json`。
+- 用户最终明确确认 **F1–F4 切人、Space 跳跃、Alt 瞄准后左键攻击全部正常**。截图可见队伍、R、跳跃、闪避、攻击、锁定等已基本对齐；技能/连携等隐藏按钮尚不能验收，不将本轮记为所有动作均已通过。
+- 12:18:12 曾出现一次 RootService 的 `InputManager rejected or timed out`，旧触控流停止并清零，悬浮映射结束；没有 app 崩溃证据。之后从 KeySync 重新启动恢复，后续保存/捕获和实体测试成功。此问题尚未定位，已单独记录待办，未加重放或自动重试。
+- 全程普通无线 ADB 与应用 run-as，无 adb root、su 或 root shell；本地基线仍为 `8d9de43`，本轮代码/文档未提交、推送或发布。
+
+## 明日方舟联合宏适配（2026-11-02，1.60）
+
+- 已完整导入用户明日方舟 JSON：7 Click、8 Macro、1 Observe。原图说明为 1600×900、144+ 帧，平板实际 3200×2136。新增测试 fixture `参考文档/com.hypergryph.arknights-默认操作方案.json`，根部用户原件不改。
+- 新增当前光标点击、sleep、左键按住/释放、scan 11/158、curve_rel、首点等待、终点保持和 release_all。宏扫描码与 Windows VK 分开；11 对应配置数字 0 暂停触点，158 对应 Android BACK。TouchSession / Framework / Root IPC 支持有序 KeyEvent，停止/失败/断连清理注入按键。宏 release_all 使用正常 UP 交接拖放，失焦停止仍 CANCEL；协程等待不阻塞 actor，取消后阻止迟到 DOWN。
+- Observe 为按住 Alt 拖动、松开恢复光标；Staring 仍为 Alt 切换。新提示、锚点校准可用。x/y÷50 仍是 KeySync 约定；宏等待/超屏曲线/保持的精确 MuMu 语义未获官方证实，不宣称零帧。
+- 用户在演习中实体确认 C 点击、F 时停、D 一键技能、A 一键撤退正常；随后对 S 验收步骤回复“正确”，确认暂停中指向干员、按住 S 选中并保持时停、松开恢复且无卡输入。用户指出新版游戏已支持暂停部署、旧划火柴脚本早于该更新，因此不再为旧右键功能继续扩展或强制实机验收；原宏保留。普通 ADB 已在暂停中正常部署望，作为场景准备，不能替代实体输入验证。
+- 保留 `arknights-mumu-1600x900` 原方案，当前选中 `arknights-tablet-3200x2136`。后者只调整 Q/2 触点与图标、A/D 最后一次固定点击：撤退 (1555,865)，技能 (2300,1465)。校准 JSON 位于 `artifacts/com.hypergryph.arknights-平板布局校准-3200x2136.json`，SHA-256 `91de7e772083557863c55f3a7fdaca82beb1c91b3a2d5455ff87ccd3a6e56b69`。对照 DataStore 确认终末地库完全不变，原 JSON 未改。
+- 40 项相关 JVM 测试通过，Lint 0 errors / 77 warnings，Debug / Release/R8 / 四 ABI JNI 成功；同迁移 Debug 证书覆盖安装 `.touch` / 26 / 1.60，安装前后偏好逐字节相同。最终 APK `artifacts/keysync-touch-core-1.60-arknights-macros.apk`，SHA-256 `ffa04c53505112ef92baea30a150140eb13013972d02516cfac02b309bfbf4a8`。
+- 全程普通无线 ADB / run-as，无 root shell；旧 RootService 随应用正常退出，新进程重新捕获 Xiaomi Keyboard 与 2.4G 接收器 event8/15/19。E、生息演算 Alt 拖视角、肉鸽 W/1 仍待相应场景。分支仍为 `codex/touch-engine-rewrite`，基线 `8d9de43`，本轮未提交、推送或发布。
+
+## 正式版发布与主分支合并（2026-11-02）
+
+- 用户已明确授权将当前源码与验证状态推送至 `YoruSakura/keysync`，直接合并到 `main` 并整理为一个正式发布包；不再受较早“尚未要求推送/发布”记录限制。
+- 正式版本 1.60 / 27，应用 ID `com.devoid.keysync.touch`，同签名 Release/R8 包。完整单测 96 项通过，Lint 0 errors / 77 warnings，四 ABI 构建通过。当前操作/待确认项完整列于 `docs/VALIDATION.md`，保留已确认的 C/F/D/A/S 和终末地操作，不把尚未测试的专用场景写成通过。
+- README 更新为正式下载入口、多游戏方案及当前验证表。GitHub Actions 改为测试、Lint、Release 构建校验，移除自动发布重复 APK 的流程；正式包经本地签名核验后统一上传。
+- 原始 JSON 与两游戏最新平板校准 JSON 纳入 `参考文档/`；APK、旧包归档、用户根部附件、私钥及本机配置保持本地，不进入 Git。旧预发布包先归档再从 GitHub Releases 移除，历史标签与提交保留。

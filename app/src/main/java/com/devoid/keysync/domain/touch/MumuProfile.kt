@@ -8,15 +8,24 @@ import kotlinx.serialization.json.*
 import java.io.InputStream
 import java.io.ByteArrayOutputStream
 
-data class MumuIcon(val point: TouchPoint, val description: String, val visible: Boolean, val scale: Double)
+data class MumuIcon(val point: TouchPoint, val description: String, val visible: Boolean, val scale: Double,
+                    val mappingIndex: Int)
 data class MumuTip(val key: Int, val icon: MumuIcon)
 data class MumuButton(val key: Int, val point: TouchPoint, val fire: Boolean, val metadata: JsonObject, val icon: MumuIcon)
 data class MumuCamera(val key: Int, val anchor: TouchPoint, val width: Double, val height: Double,
                       val sensitivityX: Double, val sensitivityY: Double, val reset: Boolean, val icon: MumuIcon)
 data class MumuJoystick(val center: TouchPoint, val radius: Double,
                         val up: Int, val left: Int, val down: Int, val right: Int, val icon: MumuIcon)
+data class MumuObserve(val key: Int, val anchor: TouchPoint, val sensitivityX: Double,
+                       val sensitivityY: Double, val icon: MumuIcon)
 sealed interface MacroAction {
     data class Click(val point: TouchPoint) : MacroAction
+    data object ClickCursor : MacroAction
+    data class Sleep(val millis: Long) : MacroAction
+    data class MouseButton(val pressed: Boolean) : MacroAction
+    data class Keyboard(val key: SimulatedKey, val pressed: Boolean) : MacroAction
+    data class Curve(val points: List<TouchPoint>, val firstWaitMillis: Long, val holdEnd: Boolean) : MacroAction
+    data object ReleaseAll : MacroAction
     data object ExitStaring : MacroAction
 }
 data class MumuMacro(
@@ -26,12 +35,14 @@ data class MumuMacro(
     val icon: MumuIcon
 )
 data class MumuProfile(val source: JsonObject, val buttons: List<MumuButton>, val camera: MumuCamera?,
-                       val joystick: MumuJoystick?, val macros: List<MumuMacro>, val tips: List<MumuTip>)
+                       val joystick: MumuJoystick?, val macros: List<MumuMacro>, val tips: List<MumuTip>,
+                       val observe: MumuObserve? = null)
 
 /** Strict supported subset, preserves original policy metadata without guessing its timing units. */
 object MumuProfileCodec {
     const val MAX_BYTES = 1024 * 1024
     private val relativeClick = Regex("click_rel:\\(([-+0-9.eE]+),\\s*([-+0-9.eE]+)\\)")
+    private val curvePoint = Regex("\\(([-+0-9.eE]+),\\s*([-+0-9.eE]+)\\)")
     fun read(input: InputStream): String {
         val bytes = ByteArrayOutputStream()
         val buffer = ByteArray(8192)
@@ -59,9 +70,10 @@ object MumuProfileCodec {
         val showIcons = root["info"]?.jsonObject?.get("visibility")?.jsonPrimitive?.boolean ?: true
         var camera: MumuCamera? = null
         var joystick: MumuJoystick? = null
-        mappings.forEach { element ->
+        var observe: MumuObserve? = null
+        mappings.forEachIndexed { index, element ->
             val item = element.jsonObject
-            val icon = icon(item, showIcons)
+            val icon = icon(item, showIcons, index)
             when (val type = item.getValue("type").jsonPrimitive.content) {
                 "Tip" -> tips += MumuTip(key(item.getValue("key").jsonObject), icon)
                 "Click", "Fire" -> {
@@ -90,6 +102,11 @@ object MumuProfileCodec {
                         number(item, "sensitivity_x", 0.0..500.0), number(item, "sensitivity_y", 0.0..500.0),
                         reset["need_reset"]?.jsonPrimitive?.booleanOrNull ?: false, icon)
                 }
+                "Observe" -> {
+                    require(observe == null && camera == null) { "Only one camera control is supported" }
+                    observe = MumuObserve(key(item.getValue("key").jsonObject), point(item.getValue("rel_work_position")),
+                        number(item, "sensitivity_x", 0.0..500.0), number(item, "sensitivity_y", 0.0..500.0), icon)
+                }
                 "Macro" -> macros += MumuMacro(
                     key(item.getValue("key").jsonObject),
                     actions(item["press_actions"]),
@@ -99,13 +116,14 @@ object MumuProfileCodec {
                 else -> error("Unsupported MuMu action: $type")
             }
         }
-        val assigned = buttons.map { it.key } + macros.map { it.key } + listOfNotNull(camera?.key) +
+        require(camera == null || observe == null) { "Only one camera control is supported" }
+        val assigned = buttons.map { it.key } + macros.map { it.key } + listOfNotNull(camera?.key, observe?.key) +
             (joystick?.let { listOf(it.up, it.left, it.down, it.right) } ?: emptyList())
         require(assigned.distinct().size == assigned.size) { "Duplicate action bindings" }
-        require(buttons.isNotEmpty() || camera != null || joystick != null || macros.isNotEmpty())
-        return MumuProfile(root, buttons, camera, joystick, macros, tips)
+        require(buttons.isNotEmpty() || camera != null || observe != null || joystick != null || macros.isNotEmpty())
+        return MumuProfile(root, buttons, camera, joystick, macros, tips, observe)
     }
-    private fun icon(item: JsonObject, showIcons: Boolean): MumuIcon {
+    private fun icon(item: JsonObject, showIcons: Boolean, index: Int): MumuIcon {
         val icon = item["icon"]?.jsonObject
         val scale = item["editor_icon_scale"]?.jsonPrimitive?.double ?: 1.0
         require(scale.isFinite() && scale > 0.0) { "Invalid icon scale" }
@@ -113,17 +131,63 @@ object MumuProfileCodec {
             point(icon?.get("rel_position") ?: item.getValue("rel_work_position")),
             icon?.get("description")?.jsonPrimitive?.content ?: "",
             showIcons && (icon?.get("visibility")?.jsonPrimitive?.boolean ?: true),
-            scale
+            scale,
+            index
         )
     }
     private fun actions(value: JsonElement?): List<MacroAction> {
         val actions = value?.jsonArray ?: return emptyList()
         require(actions.size <= 64)
-        return actions.map {
+        var firstWaitMillis = 0L
+        var holdEnd = false
+        var totalSleep = 0L
+        return actions.mapNotNull {
             val text = it.jsonPrimitive.content
-            if (text == "exit_staring") MacroAction.ExitStaring else {
-                val match = relativeClick.matchEntire(text) ?: error("Unsupported macro instruction: $text")
-                MacroAction.Click(normalized(match.groupValues[1].toDouble(), match.groupValues[2].toDouble()))
+            when {
+                text == "exit_staring" -> MacroAction.ExitStaring
+                text == "release_all" -> MacroAction.ReleaseAll
+                text == "click_rel:mouse" -> MacroAction.ClickCursor
+                text == "mouse_press:1" -> MacroAction.MouseButton(true)
+                text == "mouse_release:1" -> MacroAction.MouseButton(false)
+                text.startsWith("keyboard_press:") || text.startsWith("keyboard_release:") -> {
+                    // Macro keyboard commands use Linux scan codes, unlike binding virtual_key (Windows VK).
+                    val scan = text.substringAfter(':').toInt()
+                    val code = when (scan) {
+                        11 -> KeyEvent.KEYCODE_0
+                        158 -> KeyEvent.KEYCODE_BACK
+                        else -> error("Unsupported macro keyboard scan code: $scan")
+                    }
+                    MacroAction.Keyboard(SimulatedKey(code, scan), text.startsWith("keyboard_press:"))
+                }
+                text.startsWith("sleep:") -> {
+                    val millis = text.substringAfter(':').toLong()
+                    require(millis in 0..60_000)
+                    totalSleep += millis
+                    require(totalSleep <= 60_000) { "Macro is too long" }
+                    MacroAction.Sleep(millis)
+                }
+                text.startsWith("curve_first_point_sleep_time:") -> {
+                    firstWaitMillis = text.substringAfter(':').toLong()
+                    require(firstWaitMillis in 0..60_000)
+                    null
+                }
+                text == "curve_last_point_sleep_time:until_release_cmd" -> { holdEnd = true; null }
+                text.startsWith("curve_rel:mouse;") -> {
+                    val points = text.substringAfter(';').split(';').map { coordinate ->
+                        val match = curvePoint.matchEntire(coordinate) ?: error("Invalid macro curve point: $coordinate")
+                        val x = match.groupValues[1].toDouble(); val y = match.groupValues[2].toDouble()
+                        require(x.isFinite() && y.isFinite() && x in -16.0..16.0 && y in -16.0..16.0)
+                        TouchPoint(x, y)
+                    }
+                    require(points.size in 1..64)
+                    totalSleep += firstWaitMillis
+                    require(totalSleep <= 60_000) { "Macro is too long" }
+                    MacroAction.Curve(points, firstWaitMillis, holdEnd)
+                }
+                else -> {
+                    val match = relativeClick.matchEntire(text) ?: error("Unsupported macro instruction: $text")
+                    MacroAction.Click(normalized(match.groupValues[1].toDouble(), match.groupValues[2].toDouble()))
+                }
             }
         }
     }

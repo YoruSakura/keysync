@@ -111,6 +111,15 @@ fun MumuOverlay(
                     .padding(horizontal = 14.dp, vertical = 8.dp)
             )
         }
+        profile.observe?.let { observe ->
+            MumuKeyMarker(icon = observe.icon, width = width, height = height,
+                label = keyLabel(observe.key), color = if (isAiming) Color(0xFF80CBC4) else Color.White)
+            Text(text = stringResource(R.string.mumu_observe_mode_hint, keyLabel(observe.key)),
+                color = Color.White, fontSize = 13.sp,
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 12.dp)
+                    .background(Color.Black.copy(alpha = .85f), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 14.dp, vertical = 8.dp))
+        }
     }
 }
 
@@ -131,8 +140,8 @@ private fun MumuKeyMarker(
         modifier = Modifier
             .offset {
                 IntOffset(
-                    (icon.point.x * width - halfSize).roundToInt(),
-                    (icon.point.y * height - halfSize).roundToInt()
+                    (icon.point.x * (width - 1) - halfSize).roundToInt(),
+                    (icon.point.y * (height - 1) - halfSize).roundToInt()
                 )
             }
             .size(scaledSize)
@@ -166,7 +175,7 @@ private fun MumuKeyMarker(
 }
 
 @Composable
-private fun keyLabel(key: Int): String = when (key) {
+internal fun keyLabel(key: Int): String = when (key) {
     KEYCODE_LMC -> stringResource(R.string.left_mouse_button)
     KEYCODE_RMC -> stringResource(R.string.right_mouse_button)
     KEYCODE_MMC -> stringResource(R.string.middle_mouse_button)

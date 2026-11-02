@@ -3,7 +3,6 @@ package com.devoid.keysync.domain.touch
 import android.view.KeyEvent
 import com.devoid.keysync.domain.KEYCODE_LMC
 import com.devoid.keysync.domain.mouseButtonToKeyCode
-import kotlin.math.abs
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -16,14 +15,19 @@ class MumuActionDispatcher(private val profile: MumuProfile, private val injecto
     private val held = mutableSetOf<Int>()
     private val physicalSources = mutableMapOf<Int, MutableSet<Int>>()
     private val macroJobs = mutableMapOf<Int, Job>()
+    private val contacts = mutableSetOf<ContactId>()
     private val mode = MutableStateFlow(false)
     val shootingModeFlow = mode.asStateFlow()
     private val camera = CameraGestureController(CAMERA, injector.pipeline::submit)
+    private val wheel = WheelGestureController(scope, injector.pipeline::submit)
     private var joystick = createJoystick()
+    private var cursorPosition = TouchPoint(viewport.width / 2, viewport.height / 2)
+    private var observePosition: TouchPoint? = null
     private var cursorHeld = false
 
     @Synchronized
-    fun key(rawKey: Int, pressed: Boolean): Boolean {
+    fun key(rawKey: Int, pressed: Boolean, cursor: TouchPoint = cursorPosition): Boolean {
+        cursorPosition = cursor
         val key = when (rawKey) {
             KeyEvent.KEYCODE_ALT_RIGHT -> KeyEvent.KEYCODE_ALT_LEFT
             KeyEvent.KEYCODE_SHIFT_RIGHT -> KeyEvent.KEYCODE_SHIFT_LEFT
@@ -41,10 +45,9 @@ class MumuActionDispatcher(private val profile: MumuProfile, private val injecto
         }
         if (joystick?.key(key, pressed) == true) return true
         if (key == profile.camera?.key) { if (pressed) setCamera(!mode.value); return true }
+        if (key == profile.observe?.key) { setObserve(pressed); return true }
         buttons[key]?.let { button ->
-            val id = buttonId(key)
-            if (pressed) injector.pipeline.submit(TouchCommand.Down(id, viewport.resolve(button.point)))
-            else injector.pipeline.submit(TouchCommand.Up(id))
+            if (pressed) down(buttonId(key), viewport.resolve(button.point)) else up(buttonId(key))
             return true
         }
         profile.macros.firstOrNull { it.key == key }?.let { macro ->
@@ -57,34 +60,69 @@ class MumuActionDispatcher(private val profile: MumuProfile, private val injecto
 
     @Synchronized
     fun mouseButton(button: Int, pressed: Boolean, cursor: TouchPoint): Boolean {
+        cursorPosition = cursor
         val key = mouseButtonToKeyCode(button) ?: return false
         if (!pressed && key in held) return this.key(key, false)
-        // Explicit MuMu bindings are gameplay actions only in camera mode; menus use the cursor.
-        if (mode.value || key == profile.camera?.key) return this.key(key, pressed)
+        // Staring profiles reserve explicit mouse bindings for aiming; cursor-based profiles use them directly.
+        if (profile.camera == null || mode.value || key == profile.camera.key) {
+            if (buttons.containsKey(key) || profile.macros.any { it.key == key } || key == profile.camera?.key)
+                return this.key(key, pressed)
+        }
         if (key != KEYCODE_LMC) return false
-        if (pressed && !cursorHeld) { injector.pipeline.submit(TouchCommand.Down(CURSOR, cursor)); cursorHeld = true }
-        else if (!pressed && cursorHeld) { injector.pipeline.submit(TouchCommand.Up(CURSOR)); cursorHeld = false }
+        setCursorButton(pressed)
         return true
     }
 
     @Synchronized
-    fun move(delta: TouchPoint) {
-        if (mode.value) camera.move(delta)
-        else if (cursorHeld) injector.pipeline.submit(TouchCommand.MoveBy(mapOf(CURSOR to delta)))
+    fun move(delta: TouchPoint, cursor: TouchPoint = cursorPosition + delta) {
+        cursorPosition = cursor
+        val observe = profile.observe
+        if (mode.value && observe != null) {
+            val current = observePosition ?: viewport.resolve(observe.anchor).also { down(OBSERVE, it) }
+            val next = viewport.bounds.clamp(current + TouchPoint(delta.x * observe.sensitivityX / 50.0,
+                delta.y * observe.sensitivityY / 50.0))
+            injector.pipeline.submit(TouchCommand.Move(mapOf(OBSERVE to next)))
+            observePosition = next
+        } else if (mode.value) {
+            if (!wheel.isZooming) camera.move(delta)
+        } else if (cursorHeld) injector.pipeline.submit(TouchCommand.Move(mapOf(CURSOR to cursor)))
     }
 
     @Synchronized
     fun scroll(delta: Float, cursor: TouchPoint): Boolean {
-        if (mode.value || !delta.isFinite() || delta == 0f) return false
-        val distance = (viewport.height * .12).coerceIn(96.0, 320.0) * abs(delta.toDouble()).coerceIn(1.0, 3.0)
-        val end = viewport.bounds.clamp(cursor + TouchPoint(0.0, if (delta > 0) -distance else distance))
-        injector.injectSwipe(SCROLL.value, cursor.offset(), end.offset())
+        if (!delta.isFinite() || delta == 0f) return false
+        cursorPosition = cursor
+        if (mode.value && profile.camera != null) {
+            camera.releaseContact()
+            wheel.zoom(delta, viewport)
+        } else wheel.scroll(delta, cursor, viewport)
         return true
     }
 
-    @Synchronized
+    private fun setObserve(enabled: Boolean) {
+        if (mode.value == enabled) return
+        wheel.cancel()
+        if (!enabled) { up(OBSERVE); observePosition = null }
+        mode.value = enabled
+    }
+
+    private fun setCursorButton(pressed: Boolean) {
+        if (pressed == cursorHeld) return
+        cursorHeld = pressed
+        if (pressed) down(CURSOR, cursorPosition) else up(CURSOR)
+    }
+
+    private fun down(id: ContactId, point: TouchPoint) {
+        if (contacts.add(id)) injector.pipeline.submit(TouchCommand.Down(id, point))
+    }
+
+    private fun up(id: ContactId) {
+        if (contacts.remove(id)) injector.pipeline.submit(TouchCommand.Up(id))
+    }
+
     private fun setCamera(enabled: Boolean) {
         if (enabled == mode.value) return
+        wheel.cancel()
         if (!enabled) { camera.exit(); mode.value = false; return }
         val config = profile.camera ?: return
         val anchor = viewport.resolve(config.anchor)
@@ -92,7 +130,6 @@ class MumuActionDispatcher(private val profile: MumuProfile, private val injecto
             maxOf(0.0, anchor.y - viewport.height * config.height / 2),
             minOf(viewport.width - 1, anchor.x + viewport.width * config.width / 2),
             minOf(viewport.height - 1, anchor.y + viewport.height * config.height / 2))
-        // Our explicit linear gain convention; NOT an inferred MuMu sensitivity formula.
         camera.enter(CameraConfig(bounds.clamp(anchor).let {
             TouchPoint(it.x.coerceIn(bounds.left + .001, bounds.right - .001),
                 it.y.coerceIn(bounds.top + .001, bounds.bottom - .001))
@@ -101,45 +138,77 @@ class MumuActionDispatcher(private val profile: MumuProfile, private val injecto
     }
 
     private fun executeMacro(key: Int, actions: List<MacroAction>) {
-        val previous = macroJobs.remove(key)
-        previous?.cancel()
-        val id = macroId(key)
-        // Release a superseded macro contact, never camera/movement/attack.
-        if (previous != null) injector.pipeline.submit(TouchCommand.Up(id))
-        val job = scope.launch {
-            for (action in actions) {
-                synchronized(this@MumuActionDispatcher) {
-                    if (macroJobs[key] !== coroutineContext[Job]) return@launch
-                    when (action) {
-                        is MacroAction.Click -> injector.pipeline.submit(TouchCommand.Down(id, viewport.resolve(action.point)))
-                        MacroAction.ExitStaring -> setCamera(false)
-                    }
-                }
-                if (action is MacroAction.Click) {
-                    delay(24) // KeySync macro tap duration, not MuMu's unknown interval units.
-                    synchronized(this@MumuActionDispatcher) {
-                        if (macroJobs[key] !== coroutineContext[Job]) return@launch
-                        injector.pipeline.submit(TouchCommand.Up(id))
-                    }
-                }
+        macroJobs.remove(key)?.cancel()
+        up(macroId(key)); up(curveId(key))
+        // Programs with explicit sleeps control their own timing; retain the old tap duration for legacy click-only macros.
+        val tapMillis = if (actions.any { it is MacroAction.Sleep || it is MacroAction.Curve }) 0L else 24L
+        val job = scope.launch(start = CoroutineStart.LAZY) {
+            fun step(action: () -> Unit): Boolean = synchronized(this@MumuActionDispatcher) {
+                if (macroJobs[key] !== coroutineContext[Job]) false else { action(); true }
             }
-            synchronized(this@MumuActionDispatcher) { if (macroJobs[key] === coroutineContext[Job]) macroJobs.remove(key) }
+            suspend fun click(point: TouchPoint) {
+                if (!step { down(macroId(key), point) }) return
+                injector.pipeline.awaitIdle()
+                if (tapMillis > 0) delay(tapMillis)
+                step { up(macroId(key)) }
+                injector.pipeline.awaitIdle()
+            }
+            for (action in actions) {
+                if (!step {}) return@launch
+                when (action) {
+                    is MacroAction.Click -> click(viewport.resolve(action.point))
+                    MacroAction.ClickCursor -> click(synchronized(this@MumuActionDispatcher) { cursorPosition })
+                    is MacroAction.Sleep -> delay(action.millis)
+                    is MacroAction.MouseButton -> step { setCursorButton(action.pressed) }
+                    is MacroAction.Keyboard -> step {
+                        // The file's scan 11 invokes its mapped 0/pause button; unmapped BACK goes to Android.
+                        val button = buttons[action.key.code]
+                        if (button != null) {
+                            val id = ContactId(400_000 + action.key.scanCode)
+                            if (action.pressed) down(id, viewport.resolve(button.point)) else up(id)
+                        } else injector.pipeline.submit(TouchCommand.Key(action.key, action.pressed))
+                    }
+                    is MacroAction.Curve -> {
+                        if (!step { down(curveId(key), cursorPosition) }) return@launch
+                        injector.pipeline.awaitIdle()
+                        delay(action.firstWaitMillis)
+                        for (point in action.points) {
+                            if (!step { injector.pipeline.submit(TouchCommand.Move(mapOf(curveId(key) to viewport.resolve(point)))) }) return@launch
+                            injector.pipeline.awaitIdle()
+                        }
+                        if (!action.holdEnd) step { up(curveId(key)) }
+                    }
+                    MacroAction.ReleaseAll -> step { releaseOutputs(cancel = false) }
+                    MacroAction.ExitStaring -> step { setCamera(false) }
+                }
+                injector.pipeline.awaitIdle()
+            }
+            synchronized(this@MumuActionDispatcher) {
+                if (macroJobs[key] === coroutineContext[Job]) macroJobs.remove(key)
+            }
         }
         macroJobs[key] = job
+        job.start()
+    }
+
+    private fun releaseOutputs(cancel: Boolean = true) {
+        wheel.cancel(); camera.abandon(); observePosition = null; mode.value = false
+        contacts.clear(); cursorHeld = false; joystick = createJoystick()
+        if (cancel) injector.clear() else injector.pipeline.submit(TouchCommand.ReleaseAll)
     }
 
     @Synchronized
     fun reset() {
         macroJobs.values.forEach(Job::cancel); macroJobs.clear(); held.clear(); physicalSources.clear()
-        cursorHeld = false; camera.abandon(); joystick = createJoystick(); mode.value = false
-        injector.clear()
+        releaseOutputs()
         injector.logDiagnostics()
     }
     @Synchronized
     fun resize(newViewport: TouchViewport) {
         if (newViewport == viewport) return
-        val resume = mode.value
+        val resume = mode.value && profile.camera != null
         reset(); viewport = newViewport; joystick = createJoystick()
+        cursorPosition = viewport.bounds.clamp(cursorPosition)
         if (resume) setCamera(true)
     }
     @Synchronized
@@ -150,6 +219,7 @@ class MumuActionDispatcher(private val profile: MumuProfile, private val injecto
     internal suspend fun awaitIdle() {
         val jobs = synchronized(this) { macroJobs.values.toList() }
         jobs.joinAll()
+        wheel.awaitIdle()
         injector.pipeline.awaitIdle()
     }
 
@@ -159,10 +229,11 @@ class MumuActionDispatcher(private val profile: MumuProfile, private val injecto
     }
     private fun buttonId(key: Int) = ContactId(100_000 + key)
     private fun macroId(key: Int) = ContactId(200_000 + key)
+    private fun curveId(key: Int) = ContactId(300_000 + key)
     companion object {
         private val CAMERA = ContactId(-20_001)
         private val MOVEMENT = ContactId(-20_002)
         private val CURSOR = ContactId(-20_003)
-        private val SCROLL = ContactId(-20_004)
+        private val OBSERVE = ContactId(-20_004)
     }
 }

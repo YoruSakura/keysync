@@ -28,7 +28,10 @@ interface TouchBackend {
     /** Accepted by the injection API, NOT measured game delivery. No replay on uncertainty. */
     fun submit(frame: TouchFrame): Boolean
     fun cancel(): Boolean
+    fun key(key: SimulatedKey, pressed: Boolean, downTime: Long, eventTime: Long): Boolean = false
 }
+
+data class SimulatedKey(val code: Int, val scanCode: Int)
 
 sealed interface TouchCommand {
     data class Down(val id: ContactId, val point: TouchPoint) : TouchCommand
@@ -36,6 +39,8 @@ sealed interface TouchCommand {
     data class MoveBy(val deltas: Map<ContactId, TouchPoint>) : TouchCommand
     data class Up(val id: ContactId) : TouchCommand
     data class Rebase(val id: ContactId, val anchor: TouchPoint) : TouchCommand
+    data class Key(val key: SimulatedKey, val pressed: Boolean) : TouchCommand
+    data object ReleaseAll : TouchCommand
     data object Cancel : TouchCommand
     data object Reset : TouchCommand
 }
@@ -60,6 +65,7 @@ class TouchSessionManager(
         private set
     private var downTime = 0L
     private var lastEventTime = 0L
+    private val keys = mutableMapOf<SimulatedKey, Long>()
     private val injectionTimes = ArrayDeque<Long>()
     fun backendPercentiles(): List<Double> = synchronized(injectionTimes) {
         val sorted = injectionTimes.sorted()
@@ -69,6 +75,7 @@ class TouchSessionManager(
 
     fun apply(command: TouchCommand) {
         if (command == TouchCommand.Reset || command == TouchCommand.Cancel) {
+            releaseKeys()
             val accepted = if (contacts.isEmpty()) runCatching { backend.cancel() }.getOrDefault(false)
                 else send(TouchAction.CANCEL, 0, contacts, emptyList())
             if (!accepted) runCatching { backend.cancel() }
@@ -81,12 +88,25 @@ class TouchSessionManager(
         }
         if (faulted) return
         when (command) {
+            TouchCommand.ReleaseAll -> {
+                releaseKeys()
+                while (contacts.isNotEmpty()) up(contacts.last().owner)
+            }
             is TouchCommand.Down -> down(command.id, command.point)
             is TouchCommand.Up -> up(command.id)
             is TouchCommand.Move -> move(command.points)
             is TouchCommand.MoveBy -> move(command.deltas.mapNotNull { (id, delta) ->
                 contacts.firstOrNull { it.owner == id }?.let { id to (it.position + delta) }
             }.toMap())
+            is TouchCommand.Key -> {
+                val time = maxOf(nowMillis(), lastEventTime)
+                val keyDownTime = keys[command.key] ?: time
+                if (command.pressed) keys[command.key] = keyDownTime
+                if (backend.key(command.key, command.pressed, keyDownTime, time)) {
+                    if (!command.pressed) keys.remove(command.key)
+                    lastEventTime = time
+                } else recover()
+            }
             is TouchCommand.Rebase -> {
                 if (contacts.none { it.owner == command.id }) { reject(); return }
                 up(command.id)
@@ -142,10 +162,17 @@ class TouchSessionManager(
     }
 
     fun recover() {
+        releaseKeys()
         runCatching { backend.cancel() }
         contacts = emptyList()
         downTime = 0L
         if (!faulted) { faulted = true; failures++; onFailure() }
+    }
+
+    private fun releaseKeys() {
+        val time = maxOf(nowMillis(), lastEventTime)
+        keys.forEach { (key, pressedAt) -> backend.key(key, false, pressedAt, time) }
+        keys.clear()
     }
 
     private fun reject() { rejectedTransitions++ }

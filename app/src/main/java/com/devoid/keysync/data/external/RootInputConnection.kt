@@ -216,6 +216,12 @@ object RootInputConnection {
     }
 
     fun inject(event: InputEvent, waitForResult: Boolean = true): Boolean {
+        if (event is android.view.KeyEvent) {
+            val binder = serviceBinder?.takeIf { isReady() } ?: return false
+            return transactBoolean(binder, RootInputProtocol.TRANSACTION_INJECT_KEY) { parcel ->
+                event.writeToParcel(parcel, 0)
+            }
+        }
         val motionEvent = event as? MotionEvent ?: return false
         val binder = serviceBinder?.takeIf { isReady() } ?: return false
         return transactBoolean(binder, RootInputProtocol.TRANSACTION_INJECT) { parcel ->

@@ -299,29 +299,6 @@ std::vector<Device> open_safe_devices(
                     device.name.c_str());
         }
 
-        if (ioctl(device.fd, EVIOCGRAB, 1) < 0) {
-            failure_errno = errno;
-            __android_log_print(
-                    ANDROID_LOG_WARN,
-                    kLogTag,
-                    "Cannot exclusively grab %s (%s): %s",
-                    device.path.c_str(),
-                    device.name.c_str(),
-                    strerror(errno));
-            close(device.fd);
-            continue;
-        }
-
-        __android_log_print(
-                ANDROID_LOG_INFO,
-                kLogTag,
-                "Captured %s (%s), keyboard=%d mouseMotion=%d mouseButtons=%d mouseScroll=%d",
-                device.path.c_str(),
-                device.name.c_str(),
-                device.keyboard,
-                device.mouse_motion,
-                device.mouse_buttons,
-                device.mouse_scroll);
         devices.push_back(std::move(device));
     }
     closedir(directory);
@@ -340,6 +317,81 @@ std::vector<Device> open_safe_devices(
         devices.clear();
     }
     return devices;
+}
+
+int held_button_count(const std::vector<Device> &devices) {
+    int count = 0;
+    for (const auto &device : devices) {
+        if (!device.keyboard && !device.mouse_buttons) continue;
+        BitArray<KEY_MAX> pressed{};
+        if (ioctl(device.fd, EVIOCGKEY(sizeof(pressed)), pressed.data()) < 0) return -errno;
+        for (const auto word : pressed) count += __builtin_popcountl(word);
+    }
+    return count;
+}
+
+// Android must receive both edges of keys pressed before capture. Grabbing
+// between DOWN and UP leaves InputReader repeating the key indefinitely.
+bool grab_released_devices(std::vector<Device> &devices, int &failure_errno) {
+    bool reported_wait = false;
+    while (g_running.load() && g_capture_enabled.load()) {
+        const int held = held_button_count(devices);
+        if (held < 0) {
+            failure_errno = -held;
+            return false;
+        }
+        if (held > 0) {
+            if (!reported_wait) {
+                __android_log_print(ANDROID_LOG_INFO, kLogTag,
+                                    "Waiting for keyboard and mouse buttons to be released before capture");
+                reported_wait = true;
+            }
+            usleep(10000);
+            continue;
+        }
+
+        // Discard events already delivered to Android while waiting. They do
+        // not belong to the new mapping session.
+        for (auto &device : devices) {
+            input_event pending[32];
+            ssize_t bytes;
+            do {
+                bytes = read(device.fd, pending, sizeof(pending));
+            } while (bytes > 0 || (bytes < 0 && errno == EINTR));
+            if (bytes == 0 || (errno != EAGAIN && errno != EWOULDBLOCK)) {
+                failure_errno = bytes == 0 ? ENODEV : errno;
+                return false;
+            }
+        }
+        for (auto &device : devices) {
+            if (ioctl(device.fd, EVIOCGRAB, 1) < 0) {
+                failure_errno = errno;
+                __android_log_print(ANDROID_LOG_WARN, kLogTag,
+                                    "Cannot exclusively grab %s (%s): %s",
+                                    device.path.c_str(), device.name.c_str(), strerror(errno));
+                return false;
+            }
+        }
+
+        // A press during the hand-off must also finish through Android.
+        const int after_grab = held_button_count(devices);
+        if (after_grab < 0) {
+            failure_errno = -after_grab;
+            return false;
+        }
+        if (after_grab == 0) {
+            for (const auto &device : devices) {
+                __android_log_print(ANDROID_LOG_INFO, kLogTag,
+                                    "Captured %s (%s), keyboard=%d mouseMotion=%d mouseButtons=%d mouseScroll=%d",
+                                    device.path.c_str(), device.name.c_str(), device.keyboard,
+                                    device.mouse_motion, device.mouse_buttons, device.mouse_scroll);
+            }
+            return true;
+        }
+        for (auto &device : devices) ioctl(device.fd, EVIOCGRAB, 0);
+    }
+    failure_errno = ECANCELED;
+    return false;
 }
 
 bool call_void(JNIEnv *env, jobject callback, jmethodID method, jint first, jint second) {
@@ -514,7 +566,7 @@ Java_com_devoid_keysync_data_external_RootEvdevNative_nativeRunCapture(
             allowed_product_ids);
     int open_failure_errno = ENODEV;
     std::vector<Device> devices = open_safe_devices(allowed_devices, open_failure_errno);
-    if (devices.empty() || !g_capture_enabled.load()) {
+    if (devices.empty() || !grab_released_devices(devices, open_failure_errno)) {
         for (auto &device : devices) close_device(device);
         call_void(env, callback, on_state, 0);
         g_running.store(false);

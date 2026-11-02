@@ -24,12 +24,10 @@ internal class MappingBackupStore(private val store: DataStore<Preferences>) {
                 key.name.removePrefix(PREFIX) to Json.decodeFromString<List<DraggableItem>>(value as String)
                     .map { it.migrateLegacyMouseKeyCode() }
             }
-        val mumuProfiles = preferences.asMap().entries
-            .filter { it.key.name.startsWith(DataStoreManager.MUMU_PREFIX) }
-            .associate { (key, value) -> key.name.removePrefix(DataStoreManager.MUMU_PREFIX) to (value as String) }
+        val mumuLibraries = MumuProfileStore.readLibraries(preferences)
         return MappingBackup(
             format = MappingBackupCodec.FORMAT,
-            schemaVersion = if (mumuProfiles.isEmpty()) 1 else MappingBackupCodec.SCHEMA_VERSION,
+            schemaVersion = if (mumuLibraries.isEmpty()) 1 else MappingBackupCodec.SCHEMA_VERSION,
             createdAtMillis = nowMillis,
             sourceApplicationId = sourceApplicationId,
             keySettings = MappingKeySettings.from(config),
@@ -39,7 +37,7 @@ internal class MappingBackupStore(private val store: DataStore<Preferences>) {
             mappings = mappings,
             pointerSensitivity = preferences[DataStoreManager.POINTER_SENSITIVITY] ?: 0.5f,
             overlayOpacity = preferences[DataStoreManager.OVERLAY_OPACITY] ?: 0.5f,
-            mumuProfiles = mumuProfiles
+            mumuLibraries = mumuLibraries
         ).also(MappingBackupCodec::validate)
     }
 
@@ -49,6 +47,9 @@ internal class MappingBackupStore(private val store: DataStore<Preferences>) {
         val profiles = backup.mappings.mapValues { (_, items) ->
             Json.encodeToString(items.map { it.migrateLegacyMouseKeyCode() })
         }
+        val libraries = (backup.mumuProfiles.mapValues { MumuProfileLibrary.fromLegacy(it.value) } + backup.mumuLibraries)
+            .mapValues { Json.encodeToString(it.value) }
+        val importedPackages = (backup.addedPackages + profiles.keys + libraries.keys).distinct()
         store.edit { preferences ->
             val config = preferences[DataStoreManager.KEYS_CONFIG]?.let {
                 Json.decodeFromString<AppConfig>(it)
@@ -58,13 +59,15 @@ internal class MappingBackupStore(private val store: DataStore<Preferences>) {
             } ?: emptyList()
             profiles.forEach { (packageName, profile) ->
                 preferences[stringPreferencesKey(PREFIX + packageName)] = profile
-                if (packageName !in backup.mumuProfiles) preferences.remove(stringPreferencesKey(DataStoreManager.MUMU_PREFIX + packageName))
             }
-            backup.mumuProfiles.forEach { (packageName, profile) ->
-                preferences[stringPreferencesKey(DataStoreManager.MUMU_PREFIX + packageName)] = profile
+            importedPackages.forEach { packageName ->
+                val library = libraries[packageName]
+                if (library == null) preferences.remove(MumuProfileStore.key(packageName))
+                else preferences[MumuProfileStore.key(packageName)] = library
+                preferences.remove(stringPreferencesKey(MumuProfileStore.LEGACY_PREFIX + packageName))
             }
             preferences[DataStoreManager.ADDED_PACKAGES] = Json.encodeToString(
-                (existingApps + backup.addedPackages + backup.mappings.keys + backup.mumuProfiles.keys).distinct()
+                (existingApps + importedPackages).distinct()
             )
             preferences[DataStoreManager.KEYS_CONFIG] = Json.encodeToString(backup.keySettings.applyTo(config))
             preferences[DataStoreManager.POINTER_SENSITIVITY] = backup.pointerSensitivity

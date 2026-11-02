@@ -7,6 +7,8 @@ import android.os.Parcel
 import android.os.Process
 import android.util.Log
 import android.view.MotionEvent
+import android.view.KeyEvent
+import android.os.SystemClock
 import com.topjohnwu.superuser.ipc.RootService
 import rikka.shizuku.SystemServiceHelper
 import java.util.concurrent.Executors
@@ -23,6 +25,7 @@ class RootInputService : RootService() {
     private var captureDevices: List<RootInputDeviceIdentity> = emptyList()
     private var captureRequested = false
     private var captureRunning = false
+    private val injectedKeys = mutableMapOf<Int, KeyEvent>()
     private val callbackDeathRecipient = IBinder.DeathRecipient {
         Log.w(TAG, "Input capture client died; releasing grabbed devices")
         stopCapture()
@@ -97,6 +100,14 @@ class RootInputService : RootService() {
                     true
                 }
 
+                RootInputProtocol.TRANSACTION_INJECT_KEY -> {
+                    val event = KeyEvent.CREATOR.createFromParcel(data)
+                    val injected = withServiceIdentity { injectKey(event) }
+                    reply?.writeNoException()
+                    reply?.writeInt(if (injected) 1 else 0)
+                    true
+                }
+
                 RootInputProtocol.TRANSACTION_START_CAPTURE -> {
                     val callback = data.readStrongBinder()
                     val devices = readCaptureDeviceIdentities(data)
@@ -165,9 +176,30 @@ class RootInputService : RootService() {
     @Synchronized
     private fun stopCapture() {
         captureRequested = false
+        releaseInjectedKeys()
         runCatching { RootEvdevNative.nativeStopCapture() }
             .onFailure { Log.w(TAG, "Unable to stop native input capture", it) }
         if (!captureRunning) releaseCaptureCallback()
+    }
+
+    @Synchronized
+    private fun injectKey(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN && !captureRequested) return false
+        if (event.action == KeyEvent.ACTION_DOWN) injectedKeys[event.keyCode] = event
+        val accepted = inputManagerApi.inject(event)
+        if (accepted && event.action == KeyEvent.ACTION_UP) injectedKeys.remove(event.keyCode)
+        return accepted
+    }
+
+    private fun releaseInjectedKeys() {
+        val time = SystemClock.uptimeMillis()
+        withServiceIdentity {
+            injectedKeys.values.forEach { down ->
+                inputManagerApi.inject(KeyEvent(down.downTime, time, KeyEvent.ACTION_UP,
+                    down.keyCode, 0, 0, down.deviceId, down.scanCode, down.flags, down.source))
+            }
+        }
+        injectedKeys.clear()
     }
 
     @Synchronized
@@ -198,6 +230,7 @@ class RootInputService : RootService() {
         captureRunning = false
         if (result < 0) {
             captureRequested = false
+            releaseInjectedKeys()
             if (!stoppedIntentionally) {
                 sendCallback(
                     RootInputProtocol.CALLBACK_CAPTURE_STATE,

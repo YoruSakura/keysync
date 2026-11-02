@@ -21,6 +21,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.devoid.keysync.data.local.DataStoreManager
 import com.devoid.keysync.data.local.MappingBackupCodec
+import com.devoid.keysync.data.local.MumuProfileLibrary
 import com.devoid.keysync.domain.touch.MumuProfileCodec
 import com.devoid.keysync.domain.touch.TouchDebugRegistry
 import kotlinx.serialization.json.*
@@ -60,8 +61,8 @@ class MainActivityViewModel @Inject constructor(
 
     private val _addedPackages = MutableStateFlow<List<String>>(listOf())
     val addedPackages = _addedPackages.asStateFlow()
-    private val _mumuPackages = MutableStateFlow<List<String>>(emptyList())
-    val mumuPackages = _mumuPackages.asStateFlow()
+    private val _mumuLibraries = MutableStateFlow<Map<String, MumuProfileLibrary>>(emptyMap())
+    val mumuLibraries = _mumuLibraries.asStateFlow()
 
     private val _appConfig = MutableStateFlow(AppConfig.Default)
     val appConfig = _appConfig.asStateFlow()
@@ -71,7 +72,7 @@ class MainActivityViewModel @Inject constructor(
     val connectedDevices = _connectedDevices.asStateFlow()
 
     init {
-        viewModelScope.launch { dataStoreManager.getMumuPackages().collect { _mumuPackages.value = it } }
+        viewModelScope.launch { dataStoreManager.getMumuLibraries().collect { _mumuLibraries.value = it } }
         Shizuku.addRequestPermissionResultListener(this)
         Shizuku.addBinderReceivedListener {
             shizukuBinder = Shizuku.getBinder()
@@ -194,29 +195,42 @@ class MainActivityViewModel @Inject constructor(
         }
     }
 
-    fun suggestMumuPackage(uri: Uri): String = runCatching {
+    fun suggestMumuProfileName(uri: Uri, packageName: String): String = runCatching {
         context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
-            if (it.moveToFirst()) it.getString(0).substringBefore('-').substringBefore(".json") else ""
-        }.orEmpty()
-    }.getOrDefault("")
+            if (it.moveToFirst()) it.getString(0).substringBeforeLast('.').removePrefix("$packageName-") else "MuMu"
+        } ?: "MuMu"
+    }.getOrDefault("MuMu").take(MumuProfileLibrary.MAX_NAME_LENGTH)
 
-    fun importMumuProfile(uri: Uri, packageName: String, onFinished: (String?) -> Unit) {
+    fun importMumuProfile(uri: Uri, packageName: String, name: String, onFinished: (String?) -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {
             val error = runCatching {
                 require(BuildConfig.TOUCH_CORE) { "MuMu profiles need Touch Core" }
                 val text = requireNotNull(context.contentResolver.openInputStream(uri)).use(MumuProfileCodec::read)
-                dataStoreManager.saveMumuProfile(packageName, text)
+                require(packageName in _addedPackages.value)
                 withContext(Dispatchers.Main) { context.stopService(Intent(context, FloatingBubbleService::class.java)) }
-                _addedPackages.value = dataStoreManager.getList(DataStoreManager.ADDED_PACKAGES).first()
+                dataStoreManager.saveMumuProfile(packageName, name, text)
             }.exceptionOrNull()?.message
             withContext(Dispatchers.Main) { onFinished(error) }
         }
     }
 
-    fun removeMumuProfile(packageName: String) {
+    fun selectMumuProfile(packageName: String, id: String?) {
         viewModelScope.launch {
             context.stopService(Intent(context, FloatingBubbleService::class.java))
-            dataStoreManager.removeMumuProfile(packageName)
+            dataStoreManager.selectMumuProfile(packageName, id)
+        }
+    }
+
+    fun renameMumuProfile(packageName: String, id: String, name: String) {
+        viewModelScope.launch { dataStoreManager.renameMumuProfile(packageName, id, name) }
+    }
+
+    fun deleteMumuProfile(packageName: String, id: String) {
+        viewModelScope.launch {
+            if (_mumuLibraries.value[packageName]?.selectedId == id) {
+                context.stopService(Intent(context, FloatingBubbleService::class.java))
+            }
+            dataStoreManager.deleteMumuProfile(packageName, id)
         }
     }
 
@@ -228,6 +242,7 @@ class MainActivityViewModel @Inject constructor(
                 } else {
                     if (appConfig.value.deleteDataOnRemove) {
                         dataStoreManager.remove(DataStoreManager.getButtonsConfigKey(packageName))
+                        dataStoreManager.removeMumuProfiles(packageName)
                     }
                     false
                 }

@@ -28,8 +28,6 @@ import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
@@ -42,6 +40,9 @@ import androidx.lifecycle.viewModelScope
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.toRoute
+import com.devoid.keysync.data.local.MumuProfileLibrary
+import com.devoid.keysync.ui.GameProfilesScreen
 import com.devoid.keysync.MainActivityViewModel.UiState
 import com.devoid.keysync.model.ThemePreference
 import com.devoid.keysync.ui.AboutScreen
@@ -76,12 +77,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         setContent {
-            var pendingMumuUri by remember { mutableStateOf<Uri?>(null) }
-            var mumuPackage by remember { mutableStateOf("") }
-            val mumuLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-                if (uri != null) { mumuPackage = viewModel.suggestMumuPackage(uri); pendingMumuUri = uri }
-            }
-            val mumuPackages by viewModel.mumuPackages.collectAsStateWithLifecycle()
+            val mumuLibraries by viewModel.mumuLibraries.collectAsStateWithLifecycle()
             val diagnosticsLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
                 uri?.let { viewModel.exportTouchDiagnostics(it) { success ->
                     Toast.makeText(this@MainActivity, getString(if (success) R.string.backup_exported else R.string.backup_failed), Toast.LENGTH_SHORT).show()
@@ -158,7 +154,8 @@ class MainActivity : AppCompatActivity() {
                             appName = getString(R.string.app_name),
                             onNavigateToSettings = {
                                 navController.navigate(route = SettingsScreen)
-                            }
+                            },
+                            onManageProfiles = { navController.navigate(GameProfilesScreen(it)) }
                         ) { packageName ->
                             if (checkUiState(
                                     uiState,
@@ -180,10 +177,7 @@ class MainActivity : AppCompatActivity() {
                             onRetryRoot = viewModel::retryRootConnection,
                             onExportBackup = { exportLauncher.launch("keysync-mapping-backup.json") },
                             onImportBackup = { confirmImport = true },
-                            onImportMumu = { mumuLauncher.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) },
                             onExportTouchDiagnostics = { diagnosticsLauncher.launch("keysync-touch-diagnostics.json") },
-                            mumuPackages = mumuPackages,
-                            onRemoveMumu = viewModel::removeMumuProfile,
                             onNavigateBack = navController::popBackStack,
                             onNavigateAbout = { navController.navigate(route = AboutScreen) },
                             onSave = {
@@ -207,27 +201,15 @@ class MainActivity : AppCompatActivity() {
                             onOpenGithub = viewModel::openGithub
                         )
                     }
-                }
-                if (pendingMumuUri != null) {
-                    val validPackage = mumuPackage.length <= 255 &&
-                        Regex("[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)+").matches(mumuPackage)
-                    AlertDialog(
-                        onDismissRequest = { pendingMumuUri = null },
-                        title = { Text(stringResource(R.string.import_mumu)) },
-                        text = { Column {
-                            Text(stringResource(R.string.mumu_import_warning))
-                            OutlinedTextField(value = mumuPackage, onValueChange = { mumuPackage = it },
-                                singleLine = true, label = { Text(stringResource(R.string.target_package)) }, isError = !validPackage)
-                        } },
-                        confirmButton = { TextButton(enabled = validPackage, onClick = {
-                            val uri = pendingMumuUri ?: return@TextButton
-                            pendingMumuUri = null
-                            viewModel.importMumuProfile(uri, mumuPackage) { error ->
-                                Toast.makeText(this@MainActivity, error ?: getString(R.string.mumu_imported), Toast.LENGTH_LONG).show()
-                            }
-                        }) { Text(stringResource(R.string.import_mumu)) } },
-                        dismissButton = { TextButton(onClick = { pendingMumuUri = null }) { Text(stringResource(android.R.string.cancel)) } }
-                    )
+                    composable<GameProfilesScreen> { entry ->
+                        val targetPackage = entry.toRoute<GameProfilesScreen>().packageName
+                        GameProfilesScreen(
+                            packageName = targetPackage,
+                            library = mumuLibraries[targetPackage] ?: MumuProfileLibrary(),
+                            viewModel = viewModel,
+                            onNavigateBack = navController::popBackStack
+                        )
+                    }
                 }
                 if (confirmImport) {
                     AlertDialog(
@@ -373,3 +355,6 @@ object SettingsScreen
 
 @Serializable
 object AboutScreen
+
+@Serializable
+data class GameProfilesScreen(val packageName: String)

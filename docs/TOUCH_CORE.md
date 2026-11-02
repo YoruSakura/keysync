@@ -1,6 +1,20 @@
-# Touch Core / Framework alpha 1.56
+# Touch Core / Framework 1.60
 
-当前工作分支 `codex/touch-engine-rewrite`。保留此前未提交修复和 gamepad 文件；gamepad 路线继续暂停。没有改动稳定的 `RootEvdevCapture.cpp`、设备白名单、独占和滚轮归一化。
+正式版为 **1.60 / versionCode 27**，用户确认稳定并授权合并至 fork 的 main。完整 96 项单测、Lint 和 Release/R8、四 ABI 构建通过；发布状态见 [VALIDATION.md](VALIDATION.md)。下方保留实验版实测记录。
+
+当前安装 1.60 / versionCode 26，新增明日方舟方案支持；下方 1.59 记录保留作历史。完整导入 7 个 Click、8 个 Macro、1 个 Observe。已通过实体键鼠确认 C 点击、F 时停、D 一键技能和 A 一键撤退；用户随后确认 S 按住选中并保持时停、松开恢复且无卡输入。E 与生息演算/肉鸽专用操作尚待场景验证。用户指出新版游戏已支持暂停部署，右键划火柴按旧方案保留，本次不再强制验收。
+
+1.60 宏新增 `click_rel:mouse`、`sleep`、鼠标主键按住/释放、Linux 扫描码按键、从光标开始的 `curve_rel`、首点等待、终点保持及 `release_all`。键盘宏目前明确支持本文件的 scan 11（绑定的数字 0 点击）与 scan 158（Android BACK）；Windows VK 仍只用于输入绑定。触摸与 KeyEvent 共用有序输出队列，宏等待在协程中进行。宏 `release_all` 正常 UP 全部触点与按键，使拖动能够落下；失焦/停止/失败继续使用取消手势和松键清理。RootService 在停止捕获、客户端死亡及原生捕获失败时也释放注入的按键。
+
+Observe 为按住 Alt 拖动、松开恢复光标，与 Staring 的 Alt 切换分开。灵敏度仍采用 KeySync 的 x/y÷50 约定；`input_policy.interval` 未逐项复刻。含显式等待/曲线的宏不额外插入 24ms 点击时长，旧 click-only 宏保留原 24ms 行为。曲线保留原文超屏终点，`until_release_cmd` 按保持触点并继续程序处理；该解释及右键零帧效果仍需游戏验证，不能宣称与 MuMu 精确一致。
+
+本轮 40 项相关测试、Lint（0 errors / 77 warnings）、Debug / Release/R8 与四 ABI JNI 构建通过。明日方舟当前选择 `arknights-tablet-3200x2136`，保留 `arknights-mumu-1600x900` 原版。校准只调整 Q/2 及 A/D 的固定点击：撤退 (1555,865)、技能 (2300,1465)。终末地方案库保持不变。详见 MIGRATION.md 第 16 节。
+
+当前工作分支 `codex/touch-engine-rewrite`。保留此前未提交修复和 gamepad 文件；gamepad 路线继续暂停。1.58.1 调整 `RootEvdevCapture.cpp` 的独占交接时机：等待键鼠按钮释放后再捕获，避免 Android 收到 DOWN 却丢失 UP 而持续重复按键；设备白名单和滚轮归一化保持原实现。
+
+当前实验包为 1.59 / versionCode 25，支持任意已添加游戏分别管理多个命名 MuMu JSON，并可在游戏内点开悬浮球校准整套触点，保存到当前方案。用户已确认 1.58.1 松键即停、WASD 四方向正常。保留 1.57.1 的普通 PC 滚轮方向与滑动/缩放行为。当前平板选中独立校准方案 `WASD-3200x2136`（已含其他键位调整），使用 2.4G 鼠标和无线 ADB。高级策略和实机验证状态见 [TODO.md](TODO.md)。
+
+1.59 实机补充：用户确认 F1–F4 切人、Space 跳跃、Alt 瞄准后左键攻击均正常；技能/连携等未显示按钮仍待相应场景确认。16 项相关测试、Lint（0 errors / 77 warnings）、Debug / Release/R8 与四 ABI JNI 构建通过。保存/取消已通过实际界面与 DataStore 对照核验。
 
 ## 仓库现状与接入点（Phase 0）
 
@@ -22,29 +36,31 @@
 | 3 | MumuProfile.kt | 实际 JSON 的 Click、Fire、Swipehold、Staring、Macro、Tip；严格拒绝未知动作，保存完整策略元数据 |
 | 4 | GestureControllers.kt | 持续镜头触点、分数位移、独立 X/Y 范围、UP→锚点 DOWN→剩余位移；WASD 同 contact、对角归一化、反向键居中 |
 | 3–4 | MumuActionDispatcher.kt | Click/Fire 跟随物理按住；Alt 切换、M 严格按宏 click_rel→exit_staring，宏只释放自己的 contact |
+| 3–4 | WheelGestureController.kt | MuMu 鼠标模式连续单指滚动、瞄准模式双指缩放；累积滚轮输入、切换模式／会话 reset 时释放；缩放期间暂停 camera 实际触点 |
 | 5 | TouchDebugRegistry.kt | 队列/处理/后端提交 p50/p95/p99、触点数、重置次数、错误和合并计数；设置页导出 JSON |
 | 6 | RootNativeTouchBackend | 未实现。必须先完成 Framework 实机验收，不能以创建成功推断 Android 正确识别 uinput 触屏 |
 
-Integration 文件：InputBackendRouter、SystemInputManagerApi、FloatingWindowStateManager、EventHandler、RootInputConnection、SoftwareCursorController。UI / 持久化文件：MainActivity、MainActivityViewModel、SettingsScreen、DataStoreManager、MappingBackup / MappingBackupStore、strings.xml、app/build.gradle.kts。
+Integration 文件：InputBackendRouter、SystemInputManagerApi、FloatingWindowStateManager、EventHandler、RootInputConnection、SoftwareCursorController。UI / 持久化文件：MainActivity、MainActivityViewModel、MainScreen / GameProfilesScreen / SettingsScreen、DataStoreManager、MumuProfileLibrary / MumuProfileStore（含旧数据迁移）、MappingBackup / MappingBackupStore、strings.xml、app/build.gradle.kts。
 
 ## 使用与迁移
 
-1. 安装 `artifacts/keysync-touch-core-1.56.apk`。包名仍为 `com.devoid.keysync.touch`、versionCode=20，可覆盖同签名 1.55 实验包；不能覆盖 `.fix` 或 `.gamepad`。
+1. 当前安装包为 `artifacts/keysync-touch-core-1.59-layout-calibration.apk`。包名仍为 `com.devoid.keysync.touch`、versionCode=25，可覆盖同签名 1.55–1.58.1 实验包；不能覆盖 `.fix` 或 `.gamepad`。历史 APK 保留。
 2. 不导入 MuMu 时，原编辑器的普通映射直接走新 Touch Core，无需重新配置。
-3. 设置 → 导入 MuMu 触控方案 → 选择 `参考文档/com.hypergryph.endfield-默认操作方案.json`，确认实际安装游戏的包名。
-4. MuMu 方案单独绑定该应用，优先于原编辑器配置；原有配置不覆盖。生效时悬浮层显示导入按键、说明、WASD、宏与 Tip，顶部显示当前模式和切换键；Tip 仅提示，不新增动作。图标位置与实际触控坐标分别解析。不支持在旧编辑器里调整 MuMu 方案，导入方案生效时隐藏添加旧组件入口。设置中“移除 MuMu 方案”后重新启动目标应用即可返回原配置。
-5. 从 KeySync 内启动目标应用。该 JSON 的 Alt 切换镜头，WASD 移动，左键攻击，M 点击地图入口后退出镜头。鼠标模式左键在光标处点击，滚轮在光标处滑动；瞄准模式滚轮不滑动。
-6. 导入/移除/恢复方案会停止当前映射。离开目标应用、输入断开、后端错误、关闭映射都取消触点；Root 丢失不尝试 Shizuku。
-7. 无 MuMu 的备份仍输出 schema v1；含 MuMu 的备份输出 v2，新包同时接受 v1/v2。旧 1.54/1.55 包不能读取 v2，请保留迁移前 v1 备份。
+3. 主页添加游戏 → 点击该游戏图标下的“方案” → 导入 MuMu 触控方案 → 选择该游戏的 JSON 并命名。可以重复导入多份，列表单选当前方案；新导入的方案自动选中。游戏绑定来自所选图标，不从文件名推断包名。
+4. MuMu 方案单独绑定该应用，优先于原编辑器配置；原有配置不覆盖。生效时悬浮层显示导入按键、说明、WASD、宏与 Tip，顶部显示当前模式和切换键；Tip 仅提示，不新增动作。点开悬浮球可直接拖动十字中心校准触点：普通按键/轮盘/镜头同步移动显示标记，宏图标与各个实际 click_rel 分开校准。左右箭头选择重叠目标，保存后立即加载调整后的当前方案，取消丢弃本次调整。编辑时暂停捕获，不向游戏发送拖动；校准不改变键码和策略参数。导入方案隐藏添加旧组件入口。方案页可重命名、删除单份 JSON，或保留全部 JSON 并选择“使用原有编辑器键位”。删除当前方案时回到原编辑器，不擅自选另一份。升级时原有单份 MuMu JSON 自动迁移为名为“MuMu”的选中方案，原文不变。
+5. 从 KeySync 内启动目标应用。该 JSON 的 Alt 切换镜头，WASD 移动，左键攻击，M 点击地图入口后退出镜头。MuMu 鼠标模式左键在光标处点击、滚轮在光标处滑动；上滚页面向上（手指下划）、下滚页面向下。瞄准模式滚轮生成双指缩放，上滚张开拉近、下滚合拢拉远。滚轮按当前模式选行为，不自动识别游戏页面或改变 Alt 状态。原编辑器滚轮路径保留旧行为。
+6. 导入、选择、删除当前方案、恢复备份会停止当前映射；下一次从 KeySync 启动游戏使用所选方案。不同游戏的列表和选择独立。移除游戏时遵循设置中的“移除时删除配置”，启用后会一并删除此游戏的原编辑器键位和全部 MuMu 方案。离开目标应用、输入断开、后端错误、关闭映射都取消触点；Root 丢失不尝试 Shizuku。
+7. 无 MuMu 方案库的备份仍输出 schema v1；含方案库时输出 v3，保存所有原文、名称、ID 和当前选择（包括选择原编辑器）。新包接受 v1/v2/v3；恢复旧 v2 单份 JSON 时转换为选中方案。恢复只替换备份涉及游戏的方案库，其他游戏保留。v3 需要 1.58 或更新版本恢复，不能交给旧包；文件大小上限仍为 4MiB。
 
 ## 明确的第一版策略（不是 MuMu 内部公式）
 
 - 进入镜头后首次非零鼠标位移建立 DOWN，静止保持；普通攻击不隐式释放 camera。退出只释放 camera，其他合法 contact 保持。
 - Range_Window 用“锚点为中心的归一化宽高”与实际显示范围求交。范围几何含义尚未完整实测，这只是本版可调整的实现策略。
 - Framework 坐标为当前 display 的逻辑像素；按实际 overlay 尺寸缩放。没有照搬 MuMu `rawX=(1-y)*1080` / `rawY=x*1920` 或 slot 编号。
+- 本方案来源分辨率由用户确认为 1920×1080。当前平板 3200×2136 下游戏会重新排布 HUD，来源尺寸不能单独决定每个按钮的新落点；1.59 提供按方案校准并保留全部 MuMu 策略，不宣称全屏拉伸或任一统一锚定公式适用于所有游戏。
 - Swipehold 半径以显示短边为基准，不猜 first/subsequent policy 的时间单位；新普通 WASD 立即移动，不保留作者固定 80ms 动画。
 - 本版线性 camera gain = `sensitivity_x/y / 50`，再乘现有软件灵敏度。这是我们自己的约定，不能证明 MuMu 100 恰好为 50 的两倍。
-- 宏 click 保持 24ms，滚轮四次 MOVE 各间隔 12ms；这些是 KeySync 明确设定，非 JSON interval 的反推。
+- 宏 click 保持 24ms。MuMu 滚轮以 16ms 节奏分步消耗累积位移，空闲 64ms 后抬指；鼠标模式每刻度约屏高 12%（96–320px），缩放每刻度每指移动短边 4%，在中心作水平对称手势。缩放期间抬起 camera 实际触点并暂停转视角，结束后下次鼠标移动从锚点重新 DOWN；WASD / 攻击保留。原编辑器滚轮仍为四次 MOVE 各间隔 12ms。这些均是 KeySync 约定，非 MuMu 参数单位反推。
 - 默认 MOVE 合并窗口 4ms，可通过 `-PtouchMoveWindowMillis=0..16` 构建 A/B 包；这不是固定 250Hz 物理输入，也不对没有位移的触点发送 MOVE。
 - 最多十指；一次样本最多 128 次镜头边界穿越，异常大位移会释放镜头并进入 ERROR_RECOVERY，须重新切换镜头，不进行无限循环。
 - 第一版支持 Fire 按住，保留 Fire 标识/原始 input_policy，但不支持 `need_fire_and_drag=true`、自动连发或未知宏指令；导入时明确拒绝未实现操作。

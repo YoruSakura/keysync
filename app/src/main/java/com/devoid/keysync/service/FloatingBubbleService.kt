@@ -68,6 +68,7 @@ import com.devoid.keysync.model.DraggableItemType
 import com.devoid.keysync.ui.overlay.FloatingBubble
 import com.devoid.keysync.ui.overlay.ItemsContainer
 import com.devoid.keysync.ui.overlay.MumuOverlay
+import com.devoid.keysync.ui.overlay.MumuLayoutCalibration
 import com.devoid.keysync.ui.overlay.MenuItems
 import com.devoid.keysync.ui.overlay.ServiceLifecycleOwner
 import com.devoid.keysync.ui.overlay.SettingsLayout
@@ -561,7 +562,18 @@ class FloatingBubbleService : Service() {
                     if (!isBubbleExpanded && (!mappingTargetActive || itemsContainerOpacity == 0f))
                         return@Box//do not compose if user set overlay opacity to 0
                     val profile = mumuProfile
-                    if (profile != null) {
+                    if (profile != null && isBubbleExpanded) {
+                        val positions by stateManager.get().mumuLayoutEdits.collectAsState()
+                        val saving by stateManager.get().mumuLayoutSaving.collectAsState()
+                        MumuLayoutCalibration(
+                            profile = profile,
+                            positions = positions,
+                            saving = saving,
+                            onMove = stateManager.get()::moveMumuTarget,
+                            onSave = stateManager.get()::onFloatingBubbleClick,
+                            onCancel = stateManager.get()::cancelMumuLayout
+                        )
+                    } else if (profile != null) {
                         MumuOverlay(
                             modifier = Modifier
                                 .fillMaxSize()

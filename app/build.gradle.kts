@@ -39,8 +39,8 @@ android {
         applicationId = "com.devoid.keysync.touch"
         minSdk = 29
         targetSdk = 35
-        versionCode = 20
-        versionName = "1.56-touch-core-alpha"
+        versionCode = 27
+        versionName = "1.60"
         buildConfigField("boolean", "TOUCH_CORE", providers.gradleProperty("touchCore").orElse("true").get())
         val moveWindow = providers.gradleProperty("touchMoveWindowMillis").orElse("4").get().toLong()
         require(moveWindow in 0..16)

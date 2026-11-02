@@ -90,6 +90,12 @@ class CameraGestureController(private val id: ContactId, private val emit: (Touc
         }
     }
 
+    /** Temporarily lifts camera drag while the logical aiming mode remains enabled. */
+    fun releaseContact() {
+        if (touching) emit(TouchCommand.Up(id))
+        touching = false
+    }
+
     fun exit() {
         if (state == State.DISABLED) return
         state = State.EXITING

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -51,6 +52,7 @@ import androidx.compose.material3.SheetValue
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -79,6 +81,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.devoid.keysync.MainActivityViewModel
+import com.devoid.keysync.BuildConfig
 import com.devoid.keysync.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -171,7 +174,8 @@ fun PackagesLayout(
     packages: List<String>,
     isSelected: (Int) -> Boolean = { false },
     onClick: (Int) -> Unit,
-    onLongClick: (Int) -> Unit = {}
+    onLongClick: (Int) -> Unit = {},
+    onManageProfiles: ((String) -> Unit)? = null
 ) {
     LazyVerticalGrid(
         modifier = modifier,
@@ -205,6 +209,12 @@ fun PackagesLayout(
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.5f)
                 )
+                if (onManageProfiles != null) {
+                    TextButton(onClick = { onManageProfiles(packageName) },
+                        modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(0.dp)) {
+                        Text(stringResource(R.string.game_profiles))
+                    }
+                }
             }
         }
     }
@@ -219,6 +229,7 @@ fun MainScreen(
     viewModel: MainActivityViewModel,
     snackbarHostState: SnackbarHostState,
     onNavigateToSettings:()->Unit,
+    onManageProfiles: (String) -> Unit,
     onPackageIconClick:(String)->Unit
 ) {
     val selectedPackages = remember { mutableStateMapOf<Int, Boolean>() }
@@ -364,6 +375,7 @@ fun MainScreen(
         ) {
             PackagesLayout(packages = packages,
                 viewModel = viewModel,
+                onManageProfiles = if (BuildConfig.TOUCH_CORE && selectedPackages.isEmpty()) onManageProfiles else null,
                 isSelected = {
                     selectedPackages[it] ?: false
                 },

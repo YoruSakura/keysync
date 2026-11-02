@@ -10,6 +10,7 @@ internal object RootInputProtocol {
     const val TRANSACTION_START_CAPTURE = Binder.FIRST_CALL_TRANSACTION + 3
     const val TRANSACTION_STOP_CAPTURE = Binder.FIRST_CALL_TRANSACTION + 4
     const val TRANSACTION_GET_FOCUSED_PACKAGE = Binder.FIRST_CALL_TRANSACTION + 5
+    const val TRANSACTION_INJECT_KEY = Binder.FIRST_CALL_TRANSACTION + 6
 
     const val CALLBACK_DESCRIPTOR = "com.devoid.keysync.IRootInputCallback"
     const val CALLBACK_KEY = Binder.FIRST_CALL_TRANSACTION

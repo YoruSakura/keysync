@@ -1,0 +1,496 @@
+{
+    "info": {
+        "background_color": "000000FF",
+        "is_joystick": false,
+        "response_cursor_point_icon": false,
+        "transparent_ESC": false,
+        "transparent_keyboard": true,
+        "transparent_mouse": "Mouse_No_Transparent",
+        "transparent_mouse_windows_raw_move_period": 0,
+        "transparent_mouse_windows_raw_move_sensitivity": 1,
+        "transparent_wheel": false,
+        "uuid": "1f7b275f-ca3e-4fc3-ada5-07fd34a922b5",
+        "visibility": true
+    },
+    "keymaps": [
+        {
+            "editor_icon_scale": 1,
+            "icon": {
+                "background_color": "00000066",
+                "description": "暂停",
+                "radius_correction": 1,
+                "rel_position": {
+                    "rel_x": 0.9475,
+                    "rel_y": 0.07333333333333333
+                },
+                "visibility": true
+            },
+            "key": {
+                "device": "keyboard",
+                "scan_code": 11,
+                "text": "0",
+                "virtual_key": 48
+            },
+            "rel_work_position": {
+                "rel_x": 0.9475,
+                "rel_y": 0.07333333333333333
+            },
+            "type": "Click"
+        },
+        {
+            "editor_icon_scale": 1,
+            "icon": {
+                "background_color": "00000066",
+                "description": "技能（肉鸽大地图）",
+                "radius_correction": 1,
+                "rel_position": {
+                    "rel_x": 0.625625,
+                    "rel_y": 0.5422222222222223
+                },
+                "visibility": true
+            },
+            "key": {
+                "device": "keyboard",
+                "scan_code": 2,
+                "text": "1",
+                "virtual_key": 49
+            },
+            "rel_work_position": {
+                "rel_x": 0.625625,
+                "rel_y": 0.5422222222222223
+            },
+            "type": "Click"
+        },
+        {
+            "editor_icon_scale": 1,
+            "icon": {
+                "background_color": "00000066",
+                "description": "返回",
+                "radius_correction": 1,
+                "rel_position": {
+                    "rel_x": 0.06373008434864105,
+                    "rel_y": 0.07166666666666667
+                },
+                "visibility": true
+            },
+            "key": {
+                "device": "keyboard",
+                "scan_code": 41,
+                "text": "`",
+                "virtual_key": 192
+            },
+            "rel_work_position": {
+                "rel_x": 0.06373008434864105,
+                "rel_y": 0.07166666666666667
+            },
+            "type": "Click"
+        },
+        {
+            "editor_icon_scale": 1,
+            "icon": {
+                "background_color": "00000066",
+                "description": "一键释放技能",
+                "radius_correction": 1,
+                "rel_position": {
+                    "rel_x": 0.9562500000000003,
+                    "rel_y": 0.2677777777777778
+                },
+                "visibility": true
+            },
+            "key": {
+                "device": "keyboard",
+                "scan_code": 32,
+                "text": "D",
+                "virtual_key": 68
+            },
+            "press_actions": [
+                "click_rel:mouse",
+                "sleep:100",
+                "click_rel:(0.718974679587371,0.6861826697892272)"
+            ],
+            "rel_work_position": {
+                "rel_x": 0.9562500000000003,
+                "rel_y": 0.2677777777777778
+            },
+            "release_actions": [],
+            "type": "Macro"
+        },
+        {
+            "editor_icon_scale": 1,
+            "icon": {
+                "background_color": "00000066",
+                "description": "一键撤退",
+                "radius_correction": 1,
+                "rel_position": {
+                    "rel_x": 0.8425,
+                    "rel_y": 0.2688888888888889
+                },
+                "visibility": true
+            },
+            "key": {
+                "device": "keyboard",
+                "scan_code": 30,
+                "text": "A",
+                "virtual_key": 65
+            },
+            "press_actions": [
+                "click_rel:mouse",
+                "sleep:100",
+                "click_rel:(0.48608940293841824,0.405152224824356)"
+            ],
+            "rel_work_position": {
+                "rel_x": 0.8425,
+                "rel_y": 0.2688888888888889
+            },
+            "release_actions": [],
+            "type": "Macro"
+        },
+        {
+            "editor_icon_scale": 1,
+            "icon": {
+                "background_color": "00000066",
+                "description": "0帧部署（划火柴）",
+                "radius_correction": 1,
+                "rel_position": {
+                    "rel_x": 0.8962538819875776,
+                    "rel_y": 0.1777593615715163
+                },
+                "visibility": true
+            },
+            "key": {
+                "device": "mouse",
+                "scan_code": 2,
+                "text": "right_mouse",
+                "virtual_key": 2
+            },
+            "press_actions": [
+                "release_all",
+                "mouse_release:1",
+                "keyboard_press:11",
+                "keyboard_release:11",
+                "keyboard_release:11",
+                "curve_first_point_sleep_time:17",
+                "curve_last_point_sleep_time:until_release_cmd",
+                "curve_rel:mouse;(2.714441,4.826255)",
+                "mouse_press:1",
+                "keyboard_press:158",
+                "keyboard_release:158",
+                "keyboard_release:158"
+            ],
+            "rel_work_position": {
+                "rel_x": 0.8962538819875776,
+                "rel_y": 0.1777593615715163
+            },
+            "release_actions": [
+                "release_all",
+                "mouse_release:1"
+            ],
+            "type": "Macro"
+        },
+        {
+            "editor_icon_scale": 1,
+            "icon": {
+                "background_color": "00000066",
+                "description": "暂停",
+                "radius_correction": 1,
+                "rel_position": {
+                    "rel_x": 0.923125,
+                    "rel_y": 0.07777777777777778
+                },
+                "visibility": true
+            },
+            "key": {
+                "device": "keyboard",
+                "scan_code": 34,
+                "text": "G",
+                "virtual_key": 71
+            },
+            "rel_work_position": {
+                "rel_x": 0.923125,
+                "rel_y": 0.07777777777777778
+            },
+            "type": "Click"
+        },
+        {
+            "editor_icon_scale": 1,
+            "icon": {
+                "background_color": "00000066",
+                "description": "暂停（时停）",
+                "radius_correction": 1,
+                "rel_position": {
+                    "rel_x": 0.7539354395604397,
+                    "rel_y": 0.07792429792429793
+                },
+                "visibility": true
+            },
+            "key": {
+                "device": "keyboard",
+                "scan_code": 33,
+                "text": "F",
+                "virtual_key": 70
+            },
+            "press_actions": [
+                "keyboard_press:158"
+            ],
+            "rel_work_position": {
+                "rel_x": 0.7539354395604397,
+                "rel_y": 0.07792429792429793
+            },
+            "release_actions": [
+                "keyboard_release:158"
+            ],
+            "type": "Macro"
+        },
+        {
+            "editor_icon_scale": 1,
+            "icon": {
+                "background_color": "00000066",
+                "description": "速度",
+                "radius_correction": 1,
+                "rel_position": {
+                    "rel_x": 0.8612637362637362,
+                    "rel_y": 0.07936507936507936
+                },
+                "visibility": true
+            },
+            "key": {
+                "device": "keyboard",
+                "scan_code": 57,
+                "text": "Space",
+                "virtual_key": 32
+            },
+            "rel_work_position": {
+                "rel_x": 0.8612637362637362,
+                "rel_y": 0.07936507936507936
+            },
+            "type": "Click"
+        },
+        {
+            "editor_icon_scale": 1,
+            "icon": {
+                "background_color": "00000066",
+                "description": "撤退",
+                "radius_correction": 1,
+                "rel_position": {
+                    "rel_x": 0.48608940293841824,
+                    "rel_y": 0.405152224824356
+                },
+                "visibility": true
+            },
+            "key": {
+                "device": "keyboard",
+                "scan_code": 16,
+                "text": "Q",
+                "virtual_key": 81
+            },
+            "rel_work_position": {
+                "rel_x": 0.48608940293841824,
+                "rel_y": 0.405152224824356
+            },
+            "type": "Click"
+        },
+        {
+            "editor_icon_scale": 1,
+            "icon": {
+                "background_color": "00000066",
+                "description": "技能",
+                "radius_correction": 1,
+                "rel_position": {
+                    "rel_x": 0.718974679587371,
+                    "rel_y": 0.6861826697892272
+                },
+                "visibility": true
+            },
+            "key": {
+                "device": "keyboard",
+                "scan_code": 3,
+                "text": "2",
+                "virtual_key": 50
+            },
+            "rel_work_position": {
+                "rel_x": 0.718974679587371,
+                "rel_y": 0.6861826697892272
+            },
+            "type": "Click"
+        },
+        {
+            "editor_icon_scale": 1,
+            "icon": {
+                "background_color": "00000066",
+                "description": "0帧选取",
+                "radius_correction": 1,
+                "rel_position": {
+                    "rel_x": 0.8981249999999997,
+                    "rel_y": 0.26666666666666666
+                },
+                "visibility": true
+            },
+            "key": {
+                "device": "keyboard",
+                "scan_code": 31,
+                "text": "S",
+                "virtual_key": 83
+            },
+            "press_actions": [
+                "click_rel:(0.936875, 0.07777777777777778)",
+                "sleep:5",
+                "click_rel:mouse",
+                "sleep:5",
+                "keyboard_press:158"
+            ],
+            "rel_work_position": {
+                "rel_x": 0.8981249999999997,
+                "rel_y": 0.26666666666666666
+            },
+            "release_actions": [
+                "keyboard_release:158"
+            ],
+            "type": "Macro"
+        },
+        {
+            "editor_icon_scale": 1,
+            "icon": {
+                "background_color": "00000066",
+                "description": "长按时鼠标移动视角",
+                "radius_correction": 1,
+                "rel_position": {
+                    "rel_x": 0.6494845360824741,
+                    "rel_y": 0.27666666666666667
+                },
+                "visibility": true
+            },
+            "input_policy": {
+                "interval": 8
+            },
+            "key": {
+                "device": "keyboard",
+                "scan_code": 56,
+                "text": "Alt",
+                "virtual_key": 18
+            },
+            "rel_work_position": {
+                "rel_x": 0.6494845360824741,
+                "rel_y": 0.27666666666666667
+            },
+            "sensitivity": 2.000000000000001,
+            "sensitivity_x": 200,
+            "sensitivity_y": 200,
+            "type": "Observe"
+        },
+        {
+            "editor_icon_scale": 1,
+            "icon": {
+                "background_color": "00000066",
+                "description": "鼠标点击",
+                "radius_correction": 1,
+                "rel_position": {
+                    "rel_x": 0.1705716963448922,
+                    "rel_y": 0.06833333333333333
+                },
+                "visibility": true
+            },
+            "key": {
+                "device": "keyboard",
+                "scan_code": 46,
+                "text": "C",
+                "virtual_key": 67
+            },
+            "press_actions": [
+                "mouse_press:1"
+            ],
+            "rel_work_position": {
+                "rel_x": 0.1705716963448922,
+                "rel_y": 0.06833333333333333
+            },
+            "release_actions": [
+                "mouse_release:1"
+            ],
+            "type": "Macro"
+        },
+        {
+            "editor_icon_scale": 1,
+            "icon": {
+                "background_color": "00000066",
+                "description": "卡帧对轴",
+                "radius_correction": 1,
+                "rel_position": {
+                    "rel_x": 0.9550140581068416,
+                    "rel_y": 0.17666666666666667
+                },
+                "visibility": true
+            },
+            "key": {
+                "device": "keyboard",
+                "scan_code": 18,
+                "text": "E",
+                "virtual_key": 69
+            },
+            "press_actions": [
+                "click_rel:(0.936270,0.078333)",
+                "sleep:99",
+                "keyboard_press:158",
+                "keyboard_release:158"
+            ],
+            "rel_work_position": {
+                "rel_x": 0.9550140581068416,
+                "rel_y": 0.17666666666666667
+            },
+            "release_actions": [],
+            "type": "Macro"
+        },
+        {
+            "editor_icon_scale": 1,
+            "icon": {
+                "background_color": "00000066",
+                "description": "一键释放技能（肉鸽大地图）",
+                "radius_correction": 1,
+                "rel_position": {
+                    "rel_x": 0.948125,
+                    "rel_y": 0.3511111111111111
+                },
+                "visibility": true
+            },
+            "key": {
+                "device": "keyboard",
+                "scan_code": 17,
+                "text": "W",
+                "virtual_key": 87
+            },
+            "press_actions": [
+                "click_rel:mouse",
+                "sleep:100",
+                "click_rel:(0.625000,0.542222)"
+            ],
+            "rel_work_position": {
+                "rel_x": 0.948125,
+                "rel_y": 0.3511111111111111
+            },
+            "release_actions": [],
+            "type": "Macro"
+        }
+    ],
+    "param": {
+        "transparent_joystick_policy": {
+            "protocol_version": 0
+        },
+        "transparent_wheel_policy": {
+            "protocol_version": 0,
+            "sensitivity": 1
+        },
+        "virtual_joystick": {
+            "enable": false
+        },
+        "wheel_policy": {
+            "small_point_move_first": false,
+            "wheel_step_distance": 0.01,
+            "zoom_degree": 45,
+            "zoom_first_interval": 16,
+            "zoom_last_idle": 0,
+            "zoom_margin": 20,
+            "zoom_operation_shortcut_mode": false,
+            "zoom_period": 16,
+            "zoom_step_distance": 0.00625,
+            "zoom_steps": 8
+        }
+    }
+}

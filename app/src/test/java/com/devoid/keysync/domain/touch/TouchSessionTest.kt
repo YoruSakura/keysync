@@ -5,12 +5,18 @@ import org.junit.Test
 import kotlin.random.Random
 
 internal class RecordingTouchBackend : TouchBackend {
+    data class KeyOutput(val key: SimulatedKey, val pressed: Boolean, val downTime: Long, val eventTime: Long)
     val frames = mutableListOf<TouchFrame>()
+    val outputs = mutableListOf<Any>()
     var rejectNext = false
     var cancels = 0
     override fun submit(frame: TouchFrame): Boolean {
         if (rejectNext) { rejectNext = false; return false }
-        synchronized(frames) { frames += frame }
+        synchronized(frames) { frames += frame; outputs += frame }
+        return true
+    }
+    override fun key(key: SimulatedKey, pressed: Boolean, downTime: Long, eventTime: Long): Boolean {
+        synchronized(frames) { outputs += KeyOutput(key, pressed, downTime, eventTime) }
         return true
     }
     override fun cancel(): Boolean { cancels++; return true }

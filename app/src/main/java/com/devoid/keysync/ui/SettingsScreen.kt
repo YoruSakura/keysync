@@ -79,10 +79,7 @@ fun SettingsScreen(
     onRetryRoot: () -> Unit = {},
     onExportBackup: () -> Unit = {},
     onImportBackup: () -> Unit = {},
-    onImportMumu: () -> Unit = {},
     onExportTouchDiagnostics: () -> Unit = {},
-    mumuPackages: List<String> = emptyList(),
-    onRemoveMumu: (String) -> Unit = {},
     onSave: (AppConfig) -> Unit = {},
     onNavigateBack: () -> Unit = {},
     onNavigateAbout: () -> Unit = {}
@@ -134,15 +131,8 @@ fun SettingsScreen(
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(stringResource(R.string.touch_core_title), style = MaterialTheme.typography.titleLarge,
                                 color = MaterialTheme.colorScheme.primary)
-                            Text(stringResource(R.string.mumu_import_description), style = MaterialTheme.typography.bodyMedium)
-                            OutlinedButton(onClick = onImportMumu) { Text(stringResource(R.string.import_mumu)) }
+                            Text(stringResource(R.string.mumu_profiles_location), style = MaterialTheme.typography.bodyMedium)
                             OutlinedButton(onClick = onExportTouchDiagnostics) { Text(stringResource(R.string.export_touch_diagnostics)) }
-                            mumuPackages.forEach { packageName ->
-                                Text(packageName, style = MaterialTheme.typography.bodyMedium)
-                                OutlinedButton(onClick = { onRemoveMumu(packageName) }) {
-                                    Text(stringResource(R.string.use_existing_mapping))
-                                }
-                            }
                         }
                     }
                 }

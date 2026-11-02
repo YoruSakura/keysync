@@ -13,7 +13,11 @@ keystore.properties
 captures/
 .externalNativeBuild/
 .cxx/
-#*.apk
+*.apk
+artifacts/
+# Local copies of user-provided reference files (canonical JSON lives in 参考文档/)
+/Baidu IME_*.jpg
+/com.hypergryph.*-默认操作方案.json
 output.json
 
 # IntelliJ
