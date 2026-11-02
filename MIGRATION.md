@@ -245,3 +245,5 @@ Framework 长期稳定后再考虑独立 RootNativeTouchBackend / uinput A/B；�
 - 正式版本 1.60 / 27，应用 ID `com.devoid.keysync.touch`，同签名 Release/R8 包。完整单测 96 项通过，Lint 0 errors / 77 warnings，四 ABI 构建通过。当前操作/待确认项完整列于 `docs/VALIDATION.md`，保留已确认的 C/F/D/A/S 和终末地操作，不把尚未测试的专用场景写成通过。
 - README 更新为正式下载入口、多游戏方案及当前验证表。GitHub Actions 改为测试、Lint、Release 构建校验，移除自动发布重复 APK 的流程；正式包经本地签名核验后统一上传。
 - 原始 JSON 与两游戏最新平板校准 JSON 纳入 `参考文档/`；APK、旧包归档、用户根部附件、私钥及本机配置保持本地，不进入 Git。旧预发布包先归档再从 GitHub Releases 移除，历史标签与提交保留。
+
+- 正式发布包：`artifacts/KeySyncFix-v1.60.apk`，5,990,390 字节，SHA-256 `f9172b4b99303efd2982db9dc1f075da3ff6d4f2ac8bfdde39a7bb6ab8751698`。源码提交 `c781887`，正式发布入口 `https://github.com/YoruSakura/keysync/releases/tag/v1.60`；历史 1.41 预发布已归档到本地 `artifacts/github-release-archive/`。

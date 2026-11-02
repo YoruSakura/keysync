@@ -5,7 +5,9 @@
 ## 发布配置
 
 - 版本：1.60，versionCode 27；应用 ID：`com.devoid.keysync.touch`。
-- 正式包：`KeySyncFix-v1.60.apk`，使用 Release/R8 构建，包含四 ABI。
+- 正式包：`KeySyncFix-v1.60.apk`，使用 Release/R8 构建，包含四 ABI，大小 5,990,390 字节。
+- APK SHA-256：`f9172b4b99303efd2982db9dc1f075da3ff6d4f2ac8bfdde39a7bb6ab8751698`。
+- 应用源码提交：`c781887`；后续发布记录仅更新文档和 JSON 文件权限。
 - 沿用触控实验版签名，证书 SHA-256：`339b630de04878f77646e29fdf29a84b6785fa5a5e0b8f1f2cddbda6937428b0`。
 - GitHub Releases 只保留此正式版本的一个 APK；旧预发布包另存本地归档，历史 Git 提交和标签保留。
 
