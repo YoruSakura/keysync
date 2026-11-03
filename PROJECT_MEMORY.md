@@ -454,7 +454,8 @@ export ANDROID_SDK_ROOT="/home/sakura/.cache/keysync-build/android-sdk"
 
 ## 1.61 正式发布准备（2026-11-03）
 
-- 用户明确要求推送新代码和发布包，沿用直接合并 main、只保留一个正式发布包的授权。应用源码已提交为 `d73a91886b8121651ecc4760a1b24ce699925cda`；后续发布记录提交不再改变应用代码。较早“尚未提交／仅本地”是性能调试阶段状态。
-- 正式版本 1.61 / code29，高于设备已验证的 1.61-debug / code28。完整 96 项 JVM 测试通过，Lint 0 errors / 77 warnings / 6 information；Release/R8、四 ABI JNI 构建成功。APK 中版本控制信息已核对为 `d73a918`，包名和迁移签名一致，debuggable 未开启。
-- 正式 APK `artifacts/KeySyncFix-v1.61.apk`，5,990,838 字节，SHA-256 `46da07e0ceab3c9d679f144acc565a729a6a4b054334b667f51257c4d313d7cd`。旧 1.60 APK 及 release.json 已下载归档至 `artifacts/github-release-archive/v1.60/`，SHA-256 与旧正式包相符。
+- 用户明确要求推送新代码和发布包，沿用直接合并 main、只保留一个正式发布包的授权。应用源码已提交为 `a47cda503d254b1714ac4de5e58f6d3e260d1cb7`；后续发布记录提交不再改变应用代码。较早“尚未提交／仅本地”是性能调试阶段状态。
+- 正式版本 1.61 / code29，高于设备已验证的 1.61-debug / code28。完整 96 项 JVM 测试通过，Lint 0 errors / 77 warnings / 6 information；Release/R8、四 ABI JNI 构建成功。APK 中版本控制信息已核对为 `a47cda5`，包名和迁移签名一致，debuggable 未开启。
+- 正式 APK `artifacts/KeySyncFix-v1.61.apk`，5,990,838 字节，SHA-256 `a84883a1adef583a6ff028db59da1868715ca3f49f4f2825c5097d80716c23a2`。旧 1.60 APK 及 release.json 已下载归档至 `artifacts/github-release-archive/v1.60/`，SHA-256 与旧正式包相符。
 - README、验证状态、Touch Core 文档和交接入口已更新为 1.61；实体测试及采样详见 `docs/MOUSE_PERFORMANCE.md`。发布操作未使用 ADB，平板保持已实测的 Debug / code28 和现有配置。
+- 首轮 GitHub Actions `41576757677` 在旧 EventInjectorImpl 的 rebase 顺序测试失败；通过已有 addPointerGate 固定复现为重置两侧位移合并。`a47cda5` 将批次更新提前至 rebase 请求提交时，执行队列不回写旧编号且只清除自己的待重置标记；保持原断言。修复后本地完整 96 项测试、Lint、Release/R8 和四 ABI 再次通过；正式 APK 已重新构建，以上记录已更新为最终源码和指纹。

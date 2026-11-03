@@ -34,4 +34,6 @@ gfxinfo 绘制耗时 p50/p90/p95/p99：旧版 8/14/15/19ms，新版 7/13/14/15ms
 - APK：`artifacts/keysync-1.61-mouse-performance-debug.apk`，SHA-256 `81977e214c4fa090f8068a0222072c74414469f74b414382da65368a7f525fee`。
 - 没有使用 adb root、su 或 root shell；应用使用原有已授权 RootService。
 
+发布检查另发现旧 EventInjectorImpl 的 rebase 批次切换延迟：队列繁忙时，重置后的位移会与旧批次合并。已用原有测试的 gate 固定复现，再把批次切换提前到请求提交时；保留 UP→DOWN 和两侧位移顺序。完整 96 项测试、Lint 和 Release/R8 在修复后重新通过。此项针对旧引擎，不改变上述已实测的 Touch Core 鼠标功能。
+
 已在平板实际将视角从 50% 调至 51%，确认 1% 步进，再设回 50% 并收起悬浮球保存。对照升级前 DataStore：只新增 `aim_sensitivity=0.5`，原有全部键值字节一致（包括两游戏方案库与选择）。从 KeySync 打开终末地后，用户用实体 Alt＋鼠标验证新版 50%，确认：**“转向正常，容易控制”**。本轮两个问题均已获得用户实机确认。

@@ -6,8 +6,8 @@
 
 - 版本：1.61，versionCode 29；应用 ID：`com.devoid.keysync.touch`。
 - 正式包：`KeySyncFix-v1.61.apk`，使用 Release/R8 构建，包含四 ABI，大小 5,990,838 字节。
-- APK SHA-256：`46da07e0ceab3c9d679f144acc565a729a6a4b054334b667f51257c4d313d7cd`。
-- 应用源码提交：`d73a91886b8121651ecc4760a1b24ce699925cda`，与 APK 内的版本控制信息一致；后续提交只更新发布记录。
+- APK SHA-256：`a84883a1adef583a6ff028db59da1868715ca3f49f4f2825c5097d80716c23a2`。
+- 应用源码提交：`a47cda503d254b1714ac4de5e58f6d3e260d1cb7`，与 APK 内的版本控制信息一致；后续提交只更新发布记录。
 - 沿用触控实验版签名，证书 SHA-256：`339b630de04878f77646e29fdf29a84b6785fa5a5e0b8f1f2cddbda6937428b0`。
 - GitHub Releases 只保留此正式版本的一个 APK；旧 1.60 APK 和发布说明已归档到 `artifacts/github-release-archive/v1.60/`，历史 Git 提交和标签保留。
 
@@ -15,11 +15,13 @@
 
 正式发布前运行 `testDebugUnitTest lintDebug assembleRelease`：96 项 JVM 测试通过，0 failures / 0 errors；Lint 0 errors / 77 warnings / 6 information；Release/R8 和四 ABI JNI 构建成功。签名与现有触控版本相同，包名、版本和四 ABI 已核对，正式包未开启 debuggable。提交源码后重新打包，使 APK 记录实际源码提交。
 
+首轮云端检查暴露旧引擎镜头 rebase 的排队问题：重置尚未执行时，后续位移仍进入旧批次。借助现有测试的 addPointerGate 固定复现（预期两个位移，实际合为一个），在提交 rebase 时立即更新批次编号，旧任务仅清除自己的待重置标记。修复后完整 96 项测试和 Release/R8 构建再次通过，未削弱断言或跳过测试。
+
 ## 设备与实体输入
 
 Android 16 小米平板 25053RP5CC，游戏横屏 3200×2136；Xiaomi Keyboard 与 2.4G Xiaomi Mi USB Receiver Mouse。设备操作使用普通无线 ADB；应用沿用已授权的 Root 输入模式。
 
-1.61 实测使用 Debug / code28；正式包为相同功能代码的 Release/R8 / code29，本次发布未替换平板上的测试包。下表保留 1.60 的基础操作结果，新增两项 1.61 的实际反馈。
+1.61 两项鼠标功能实测使用 Debug / code28；正式包为 Release/R8 / code29，并包含上述发布检查中发现的旧引擎修复。本次发布未替换平板上的测试包。下表保留 1.60 的基础操作结果，新增两项 1.61 的实际反馈。
 
 | 范围 | 已验证行为 |
 | --- | --- |
