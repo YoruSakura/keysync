@@ -1,6 +1,7 @@
 package com.devoid.keysync.data.local
 
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.preferencesOf
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.devoid.keysync.model.AppConfig
@@ -73,18 +74,26 @@ class MumuProfileStoreTest {
         store.add(GAME_A, "键位二", "$profile\n")
         store.add(GAME_B, "另一游戏", profile)
         store.select(GAME_A, null)
+        dataStore.edit {
+            it[DataStoreManager.AIM_SENSITIVITY] = 0.23f
+            it[DataStoreManager.POINTER_SENSITIVITY] = 0.6f
+        }
         val backupStore = MappingBackupStore(dataStore)
         val saved = backupStore.snapshot("com.example.keysync", 0)
         val portable = MappingBackupCodec.decode(MappingBackupCodec.encode(saved))
-        assertEquals(3, portable.schemaVersion)
+        assertEquals(4, portable.schemaVersion)
+        assertEquals(0.23f, portable.aimSensitivity)
         assertEquals(saved, portable)
 
         store.add(GAME_A, "不在备份中", profile)
         store.removeGame(GAME_B)
+        dataStore.edit { it[DataStoreManager.AIM_SENSITIVITY] = 0.9f }
         backupStore.restore(portable)
         assertEquals(saved.mumuLibraries, store.libraries().first())
         assertNull(store.activeProfile(GAME_A).first())
         assertEquals(profile, store.activeProfile(GAME_B).first())
+        assertEquals(0.23f, dataStore.data.first()[DataStoreManager.AIM_SENSITIVITY])
+        assertEquals(0.6f, dataStore.data.first()[DataStoreManager.POINTER_SENSITIVITY])
     }
 
     @Test fun `calibration saves only the specified profile and survives backup with names and selection`() = runBlocking {

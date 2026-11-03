@@ -111,7 +111,8 @@
     <string name="fire_description">Use the configured mouse button to fire or attack</string>
     <string name="bag_map_description">A button that toggles a bag, map, or similar panel</string>
     <string name="scope_description">Use the configured button to aim or scope</string>
-    <string name="pointer_sensitivity">Pointer sensitivity:</string>
+    <string name="pointer_sensitivity">Cursor speed:</string>
+    <string name="aim_sensitivity">Camera sensitivity:</string>
     <string name="overlay_opacity">Overlay opacity:</string>
     <string name="close">Close</string>
     <string name="close_overlay">Close overlay</string>

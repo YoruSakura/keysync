@@ -11,8 +11,6 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.WindowManager
 import android.widget.Toast
-import androidx.compose.runtime.State
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.geometry.Offset
 import androidx.core.view.WindowInsetsCompat
 import androidx.datastore.preferences.core.Preferences
@@ -80,6 +78,7 @@ class FloatingWindowStateManager @Inject constructor(
     val windowManager: WindowManager by lazy { context.getSystemService(WindowManager::class.java) }
 
     val pointerSensitivity = MutableStateFlow(0.5f)
+    val aimSensitivity = MutableStateFlow(0.5f)
     val overlayOpacity = MutableStateFlow(0.5f)
 
     private var buttonConfigKey :Preferences.Key<String>? = null
@@ -88,9 +87,6 @@ class FloatingWindowStateManager @Inject constructor(
 
     private val _appConfig =MutableStateFlow(AppConfig.Default)
     val keysConfig = _appConfig.asStateFlow()
-
-    val sensitivity: Float
-        get() = 10f * pointerSensitivity.value // At max 10x the original offset.
 
     private val _isBubbleExpanded = MutableStateFlow(false)
     val isBubbleExpanded = _isBubbleExpanded.asStateFlow()
@@ -127,7 +123,7 @@ class FloatingWindowStateManager @Inject constructor(
                 mainHandler.post { onMouseMove(deltaX, deltaY) }; return
             }
             if (_isBubbleExpanded.value || !_mappingTargetActive.value) return
-            handleMouseMove(Offset(deltaX.toFloat(), deltaY.toFloat()) * sensitivity)
+            handleMouseMove(Offset(deltaX.toFloat(), deltaY.toFloat()))
         }
 
         override fun onMouseScroll(verticalDeltaUnits: Int) {
@@ -164,22 +160,24 @@ class FloatingWindowStateManager @Inject constructor(
     }
 
     private var maximumPointerPosition = currentMaximumPointerPosition()
-    private val _mousePointerOffset = mutableStateOf(
-        Offset(
+    private var cursorRenderer: ((Offset) -> Unit)? = null
+    private val softwareCursor = SoftwareCursorController(
+        initialPosition = Offset(
             (maximumPointerPosition.x + 1f) / 2f,
             (maximumPointerPosition.y + 1f) / 2f
-        )
-    )
-    val pointerOffset: State<Offset> = _mousePointerOffset
-    private val softwareCursor = SoftwareCursorController(
-        initialPosition = _mousePointerOffset.value,
+        ),
         maximumPosition = maximumPointerPosition,
         scheduleFrame = { render ->
             // Root callbacks run on KeySyncRootInput, never call Choreographer there.
             mainHandler.post { Choreographer.getInstance().postFrameCallback { render() } }
         },
-        renderPosition = { _mousePointerOffset.value = it }
+        renderPosition = { cursorRenderer?.invoke(it) }
     )
+
+    fun setCursorRenderer(renderer: (Offset) -> Unit) {
+        cursorRenderer = renderer
+        renderer(softwareCursor.position)
+    }
 
     private val _containerItems = MutableStateFlow(listOf<DraggableItem>())
     val containerItems = _containerItems.asStateFlow()
@@ -207,6 +205,7 @@ class FloatingWindowStateManager @Inject constructor(
                 buttonConfigKey?.let {
                     dataStoreManager.save(DataStoreManager.OVERLAY_OPACITY,overlayOpacity.value)
                     dataStoreManager.save(DataStoreManager.POINTER_SENSITIVITY,pointerSensitivity.value)
+                    dataStoreManager.save(DataStoreManager.AIM_SENSITIVITY,aimSensitivity.value)
                     dataStoreManager.save(it,containerItems.value)
                 }
                 _appConfig.value = dataStoreManager.getKeyConfig(DataStoreManager.KEYS_CONFIG).first()
@@ -268,6 +267,9 @@ class FloatingWindowStateManager @Inject constructor(
             val savedSensitivity = dataStoreManager
                 .getFloat(DataStoreManager.POINTER_SENSITIVITY)
                 .first()
+            val savedAimSensitivity = dataStoreManager
+                .getFloat(DataStoreManager.AIM_SENSITIVITY)
+                .first()
             val savedMumu = dataStoreManager.getMumuLibraries().first()[packageName]?.selectedProfile
 
             if (generation != configLoadGeneration) return@launch
@@ -292,6 +294,7 @@ class FloatingWindowStateManager @Inject constructor(
             }
             savedOpacity?.let { overlayOpacity.value = it }
             savedSensitivity?.let { pointerSensitivity.value = it }
+            aimSensitivity.value = savedAimSensitivity ?: 0.5f
         }
     }
 
@@ -413,7 +416,7 @@ class FloatingWindowStateManager @Inject constructor(
             }
 
             MotionEvent.ACTION_MOVE -> {
-                val offset = motionEvent.accumulatedRelativeOffset() * sensitivity
+                val offset = motionEvent.accumulatedRelativeOffset()
                 return handleMouseMove(offset)
 
             }
@@ -536,6 +539,7 @@ class FloatingWindowStateManager @Inject constructor(
         cancelIdleShootingPointerRelease()
         mainHandler.removeCallbacks(reportInputInjectionFailure)
         softwareCursor.cancel()
+        cursorRenderer = null
         if (_mappingFailure.value == null) {
             stopInputCapture()
         } else {
@@ -612,9 +616,12 @@ class FloatingWindowStateManager @Inject constructor(
         if (!isShootingMode.value) cancelIdleShootingPointerRelease()
     }
 
-    private fun handleMouseMove(offset: Offset): Boolean {
-        if (offset == Offset.Zero) return true
+    private fun handleMouseMove(rawOffset: Offset): Boolean {
+        if (rawOffset == Offset.Zero) return true
         val aiming = mumuDispatcher?.shootingModeFlow?.value ?: eventHandler.shootingModeFlow.value
+        // Cursor speed retains its existing scale. Camera movement uses a separate
+        // 1:1 maximum gain, before the imported profile's axis-specific settings.
+        val offset = rawOffset * if (aiming) aimSensitivity.value else 10f * pointerSensitivity.value
         val effectiveOffset = if (aiming) {
             offset
         } else {

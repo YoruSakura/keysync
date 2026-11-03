@@ -27,7 +27,7 @@ internal class MappingBackupStore(private val store: DataStore<Preferences>) {
         val mumuLibraries = MumuProfileStore.readLibraries(preferences)
         return MappingBackup(
             format = MappingBackupCodec.FORMAT,
-            schemaVersion = if (mumuLibraries.isEmpty()) 1 else MappingBackupCodec.SCHEMA_VERSION,
+            schemaVersion = MappingBackupCodec.SCHEMA_VERSION,
             createdAtMillis = nowMillis,
             sourceApplicationId = sourceApplicationId,
             keySettings = MappingKeySettings.from(config),
@@ -36,6 +36,7 @@ internal class MappingBackupStore(private val store: DataStore<Preferences>) {
             } ?: emptyList(),
             mappings = mappings,
             pointerSensitivity = preferences[DataStoreManager.POINTER_SENSITIVITY] ?: 0.5f,
+            aimSensitivity = preferences[DataStoreManager.AIM_SENSITIVITY] ?: 0.5f,
             overlayOpacity = preferences[DataStoreManager.OVERLAY_OPACITY] ?: 0.5f,
             mumuLibraries = mumuLibraries
         ).also(MappingBackupCodec::validate)
@@ -71,6 +72,7 @@ internal class MappingBackupStore(private val store: DataStore<Preferences>) {
             )
             preferences[DataStoreManager.KEYS_CONFIG] = Json.encodeToString(backup.keySettings.applyTo(config))
             preferences[DataStoreManager.POINTER_SENSITIVITY] = backup.pointerSensitivity
+            preferences[DataStoreManager.AIM_SENSITIVITY] = backup.aimSensitivity
             preferences[DataStoreManager.OVERLAY_OPACITY] = backup.overlayOpacity
         }
     }

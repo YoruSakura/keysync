@@ -549,10 +549,12 @@ fun MenuItems(
 fun SettingsLayout(
     modifier: Modifier = Modifier,
     pointerSensitivity: Float = 0.5f,
+    aimSensitivity: Float = 0.5f,
     overlayOpacity: Float = 0.5f,
     onAdvancedSettingsClick: () -> Unit,
     onCloseOverlayClick: () -> Unit,
     onPointerSensChange: (Float) -> Unit,
+    onAimSensChange: (Float) -> Unit,
     onOpacityChange: (Float) -> Unit
 ) {
     Column(
@@ -568,7 +570,7 @@ fun SettingsLayout(
                 fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f)
             )
             Text(
-                "${(pointerSensitivity * 100).roundToInt()} %",
+                "${(pointerSensitivity * 1000).roundToInt()} %",
                 modifier = Modifier
                     .padding(start = 16.dp)
                     .align(Alignment.CenterVertically),
@@ -579,8 +581,28 @@ fun SettingsLayout(
         Slider(
             value = pointerSensitivity,
             onValueChange = onPointerSensChange,
-            valueRange = 0.1f..1.0f,
-            steps = 8
+            valueRange = 0.01f..1.0f,
+            steps = 98
+        )
+        Row {
+            Text(
+                text = stringResource(R.string.aim_sensitivity),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f)
+            )
+            Text(
+                "${(aimSensitivity * 100).roundToInt()} %",
+                modifier = Modifier
+                    .padding(start = 16.dp)
+                    .align(Alignment.CenterVertically),
+                style = TextStyle(color = MaterialTheme.colorScheme.tertiary)
+            )
+        }
+        Slider(
+            value = aimSensitivity,
+            onValueChange = onAimSensChange,
+            valueRange = 0.01f..1.0f,
+            steps = 98
         )
         Row {
             Text(
@@ -643,7 +665,8 @@ private fun PreviewMenuItems() {
 @Composable
 private fun PreviewSettingsLayout() {
     SettingsLayout(
-        Modifier.clip(
+        onAimSensChange = {},
+        modifier = Modifier.clip(
             CircleShape.copy(CornerSize(10))
         ),
         onAdvancedSettingsClick = { },

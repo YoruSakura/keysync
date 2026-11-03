@@ -25,7 +25,8 @@ data class MappingBackup(
     val pointerSensitivity: Float,
     val overlayOpacity: Float,
     val mumuProfiles: Map<String, String> = emptyMap(),
-    val mumuLibraries: Map<String, MumuProfileLibrary> = emptyMap()
+    val mumuLibraries: Map<String, MumuProfileLibrary> = emptyMap(),
+    val aimSensitivity: Float = 0.5f
 )
 
 @Serializable
@@ -56,7 +57,7 @@ data class MappingKeySettings(
 
 object MappingBackupCodec {
     const val FORMAT = "keysync-keymap-backup"
-    const val SCHEMA_VERSION = 3
+    const val SCHEMA_VERSION = 4
     const val MAX_BYTES = 4 * 1024 * 1024
     private val packagePattern = Regex("[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)+")
     private val json = Json { prettyPrint = true; encodeDefaults = true; ignoreUnknownKeys = true }
@@ -103,6 +104,7 @@ object MappingBackupCodec {
             require(it.length <= 255 && packagePattern.matches(it)) { "Invalid app package" }
         }
         require(backup.pointerSensitivity.isFinite() && backup.pointerSensitivity in 0f..1f)
+        require(backup.aimSensitivity.isFinite() && backup.aimSensitivity in 0.01f..1f)
         require(backup.overlayOpacity.isFinite() && backup.overlayOpacity in 0f..1f)
         require(backup.keySettings.buttonScale.isFinite() && backup.keySettings.buttonScale in 0f..2f)
         backup.mumuProfiles.values.forEach(MumuProfileCodec::decode)

@@ -108,7 +108,8 @@
     <string name="fire_description">使用设定的鼠标按键开火或攻击</string>
     <string name="bag_map_description">用于打开或关闭背包、地图等面板的按钮</string>
     <string name="scope_description">使用设定的按键瞄准或开镜</string>
-    <string name="pointer_sensitivity">鼠标灵敏度：</string>
+    <string name="pointer_sensitivity">光标速度：</string>
+    <string name="aim_sensitivity">视角灵敏度：</string>
     <string name="overlay_opacity">映射层透明度：</string>
     <string name="close">关闭</string>
     <string name="close_overlay">关闭映射层</string>

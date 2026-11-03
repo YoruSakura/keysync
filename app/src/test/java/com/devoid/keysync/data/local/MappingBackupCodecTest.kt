@@ -3,6 +3,9 @@ package com.devoid.keysync.data.local
 import androidx.compose.ui.geometry.Offset
 import com.devoid.keysync.model.DraggableItem
 import com.devoid.keysync.model.AppConfig
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
@@ -16,6 +19,8 @@ class MappingBackupCodecTest {
         assertEquals(backup, MappingBackupCodec.decode(MappingBackupCodec.encode(backup)))
         val withProfile = backup.copy(schemaVersion = 2, mumuProfiles = mapOf("com.hypergryph.endfield" to text))
         assertEquals(withProfile, MappingBackupCodec.decode(MappingBackupCodec.encode(withProfile)))
+        val oldFields = Json.parseToJsonElement(MappingBackupCodec.encode(backup)).jsonObject - "aimSensitivity"
+        assertEquals(0.5f, MappingBackupCodec.decode(JsonObject(oldFields).toString()).aimSensitivity)
     }
 
     @Test
@@ -30,7 +35,8 @@ class MappingBackupCodecTest {
             listOf("com.example.game"),
             mapOf("com.example.game" to listOf(item)),
             0.5f,
-            0.8f
+            0.8f,
+            aimSensitivity = 0.23f
         )
 
         val decoded = MappingBackupCodec.decode(MappingBackupCodec.encode(backup))

@@ -15,14 +15,15 @@ import android.os.IBinder
 import android.os.Looper
 import android.util.Log
 import android.view.Gravity
+import android.view.View
 import android.view.ViewTreeObserver
 import android.view.WindowManager
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
@@ -48,10 +49,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.ComposeView
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -529,6 +528,21 @@ class FloatingBubbleService : Service() {
     ): PointerCaptureFrameLayout {
         val localizedContext = ContextCompat.getContextForLanguage(this)
         val rootView = PointerCaptureFrameLayout(localizedContext)
+        val cursorView = ImageView(localizedContext).apply {
+            setImageResource(R.drawable.mouse)
+            visibility = View.GONE
+            contentDescription = getString(R.string.mouse_pointer)
+        }
+        rootView.addView(cursorView, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT
+        ))
+        stateManager.get().setCursorRenderer { position ->
+            // Update the RenderNode in this frame's animation phase, without
+            // waiting for Compose to observe a snapshot on a later frame.
+            cursorView.translationX = position.x
+            cursorView.translationY = position.y
+        }
         val composeView = ComposeView(localizedContext)
         composeView.layoutParams = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
@@ -540,24 +554,14 @@ class FloatingBubbleService : Service() {
                 val itemsContainerOpacity by stateManager.get().overlayOpacity.collectAsState()
                 val isBubbleExpanded by stateManager.get().isBubbleExpanded.collectAsState()
                 val isShootingMode by stateManager.get().isShootingMode.collectAsState()
-                val pointerOffset = stateManager.get().pointerOffset
                 val keysConfig by stateManager.get().keysConfig.collectAsState()
                 val mumuProfile by stateManager.get().mumuProfile.collectAsState()
                 Box {
                     val mappingTargetActive by stateManager.get()
                         .mappingTargetActive.collectAsState()
-                    if (mappingTargetActive && !isBubbleExpanded && !isShootingMode) {
-                        Image(///mouse pointer
-                            modifier = Modifier.graphicsLayer {
-                                // Read cursor state during the layer phase so
-                                // movement does not recompose or relayout the
-                                // complete full-screen overlay.
-                                translationX = pointerOffset.value.x
-                                translationY = pointerOffset.value.y
-                            },
-                            painter = painterResource(R.drawable.mouse),
-                            contentDescription = stringResource(R.string.mouse_pointer)
-                        )
+                    LaunchedEffect(mappingTargetActive, isBubbleExpanded, isShootingMode) {
+                        cursorView.visibility = if (mappingTargetActive && !isBubbleExpanded && !isShootingMode)
+                            View.VISIBLE else View.GONE
                     }
                     if (!isBubbleExpanded && (!mappingTargetActive || itemsContainerOpacity == 0f))
                         return@Box//do not compose if user set overlay opacity to 0
@@ -823,12 +827,15 @@ class FloatingBubbleService : Service() {
                             width = Dimension.preferredWrapContent
                         }) {
                     val pointerSensitivity by stateManager.get().pointerSensitivity.collectAsState()
+                    val aimSensitivity by stateManager.get().aimSensitivity.collectAsState()
                     val overlayOpacity by stateManager.get().overlayOpacity.collectAsState()
                     SettingsLayout(
                         pointerSensitivity = pointerSensitivity,
+                        aimSensitivity = aimSensitivity,
                         overlayOpacity = overlayOpacity,
                         onOpacityChange = { stateManager.get().overlayOpacity.value = it },
                         onPointerSensChange = { stateManager.get().pointerSensitivity.value = it },
+                        onAimSensChange = { stateManager.get().aimSensitivity.value = it },
                         onAdvancedSettingsClick = {
                             val intent = Intent(baseContext, MainActivity::class.java).apply {
                                 flags =
@@ -927,6 +934,7 @@ fun PreviewFloatingBubble() {
                 SettingsLayout(
                     onAdvancedSettingsClick = {},
                     onPointerSensChange = {},
+                    onAimSensChange = {},
                     onOpacityChange = { },
                     onCloseOverlayClick = {}
                 )

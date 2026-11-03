@@ -41,6 +41,7 @@ class DataStoreManager @Inject constructor(private val context: Context) {
 
         val ADDED_PACKAGES = stringPreferencesKey("added_packages")
         val POINTER_SENSITIVITY = floatPreferencesKey("pointer_sensitivity")
+        val AIM_SENSITIVITY = floatPreferencesKey("aim_sensitivity")
         val OVERLAY_OPACITY = floatPreferencesKey("overlay_opacity")
         val KEYS_CONFIG = stringPreferencesKey("keys_config")
     }

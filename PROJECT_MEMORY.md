@@ -441,3 +441,13 @@ export ANDROID_SDK_ROOT="/home/sakura/.cache/keysync-build/android-sdk"
 - 原始 JSON 与两游戏最新平板校准 JSON 纳入 `参考文档/`；APK、旧包归档、用户根部附件、私钥及本机配置保持本地，不进入 Git。旧预发布包先归档再从 GitHub Releases 移除，历史标签与提交保留。
 
 - 正式发布包：`artifacts/KeySyncFix-v1.60.apk`，5,990,390 字节，SHA-256 `f9172b4b99303efd2982db9dc1f075da3ff6d4f2ac8bfdde39a7bb6ab8751698`。源码提交 `c781887`，正式发布入口 `https://github.com/YoruSakura/keysync/releases/tag/v1.60`；历史 1.41 预发布已归档到本地 `artifacts/github-release-archive/`。
+
+## 鼠标性能优化（2026-11-03，1.61）
+
+- 从 `main` / `8d913f3` 创建 `codex/mouse-performance`；本轮源码和文档修改尚未提交。当前设备升级为 `1.61-debug` / code28；GitHub 正式版仍为 1.60。
+- 用户反馈终末地视角太快、明日方舟光标间歇跳动。发现旧设置将 20% 放大为原始输入的 2 倍、默认 50% 为 5 倍，且共用于光标和视角。新增独立 `aimSensitivity`（1%–100%，步进 1%，默认 50%，最大原始位移 1 倍），之后仍应用 MuMu 的 X/Y÷50；光标保留原实际倍率，显示真实百分比（旧 20% 现显示 200%），范围 10%–1000%。Root 与 Shizuku 共用分流。
+- 实机证明旧版悬浮窗已有硬件加速和 Skia/Vulkan，不将硬件加速标志作为修复。光标从 Compose Image 改为同窗 ImageView，帧回调直接设置原生 RenderNode 的 translationX/Y，省去 Compose 快照观察等待；逻辑坐标、边界钳制、每帧只画最新位置及输入顺序保留，没有插值和尾随。
+- 用户两版分别移动实体鼠标约 10 秒。1.61 明确反馈“已移动，明显更顺滑”。同为约 16.7ms FrameInterval，最近 120 帧的 119 个间隔：旧版 16.7ms×46、33.3ms×68、50ms×3，另约 150/183ms 各 1；新版全为约 16.7ms。不是端到端延迟测量，也不以不同时长的总帧数计算 FPS；legacy jank 与新指标不一致，详见 `docs/MOUSE_PERFORMANCE.md`。
+- 新偏好 `aim_sensitivity`；备份 schema v4，仍接受 v1/v2/v3，旧备份默认视角 50%。16 项相关测试通过，Lint 0 errors / 77 warnings / 6 information，Debug 和四 ABI JNI 成功；本轮未重新构建 Release/R8。同迁移证书覆盖安装，升级前后 DataStore 字节一致。
+- 平板 UI 实际验证 50%→51% 步进，再设回 50% 收起保存；只新增 `aim_sensitivity=0.5`，全部原有键值（含两游戏方案库与选择）逐项字节一致。终末地从 KeySync 打开后，用户通过实体 Alt＋鼠标验证新版 50%，确认“转向正常，容易控制”。两个问题均已获得用户实机确认。
+- APK：`artifacts/keysync-1.61-mouse-performance-debug.apk`；SHA-256 `81977e214c4fa090f8068a0222072c74414469f74b414382da65368a7f525fee`。唯一无线 ADB 仍为 `10.1.1.115:45941`，2.4G 鼠标；无 adb root / su / root shell，应用沿用既有 RootService。
