@@ -1,6 +1,6 @@
-# Touch Core / Framework 1.60
+# Touch Core / Framework 1.61
 
-2026-11-03 本地性能版 **1.61-debug / code28**：光标直接在帧回调更新原生图层；视角灵敏度独立为 1%–100%，光标速度显示真实倍率。用户已确认光标明显更顺滑，证据见 [MOUSE_PERFORMANCE.md](MOUSE_PERFORMANCE.md)。下文旧版实测保留作历史。
+2026-11-03 正式版 **1.61 / code29**：光标直接在帧回调更新原生图层；视角灵敏度独立为 1%–100%，光标速度显示真实倍率。用户在 Debug / code28 实测确认光标明显更顺滑、终末地新版 50% 转向正常且容易控制。96 项完整测试、Lint、同签名 Release/R8 与四 ABI 构建通过，见 [VALIDATION.md](VALIDATION.md)；前后采样见 [MOUSE_PERFORMANCE.md](MOUSE_PERFORMANCE.md)。下文旧版实测保留作历史。
 
 正式版为 **1.60 / versionCode 27**，用户确认稳定并授权合并至 fork 的 main。完整 96 项单测、Lint 和 Release/R8、四 ABI 构建通过；发布状态见 [VALIDATION.md](VALIDATION.md)。下方保留实验版实测记录。
 

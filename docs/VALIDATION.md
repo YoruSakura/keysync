@@ -1,23 +1,25 @@
-# 1.60 正式版验证记录
+# 1.61 正式版验证记录
 
-日期：2026-11-02（Asia/Shanghai）。用户确认当前 fork 在已测试操作中稳定，并授权直接合并至 `YoruSakura/keysync` 的 `main`、发布一个正式 APK。
+日期：2026-11-03（Asia/Shanghai）。用户已确认两项鼠标优化的实机效果，并授权将新代码及正式安装包发布至 `YoruSakura/keysync`；沿用直接合并 main、只保留一个正式发布包的要求。
 
 ## 发布配置
 
-- 版本：1.60，versionCode 27；应用 ID：`com.devoid.keysync.touch`。
-- 正式包：`KeySyncFix-v1.60.apk`，使用 Release/R8 构建，包含四 ABI，大小 5,990,390 字节。
-- APK SHA-256：`f9172b4b99303efd2982db9dc1f075da3ff6d4f2ac8bfdde39a7bb6ab8751698`。
-- 应用源码提交：`c781887`；后续提交更新发布记录、CI 配置和 JSON 文件权限。
+- 版本：1.61，versionCode 29；应用 ID：`com.devoid.keysync.touch`。
+- 正式包：`KeySyncFix-v1.61.apk`，使用 Release/R8 构建，包含四 ABI，大小 5,990,838 字节。
+- APK SHA-256：`46da07e0ceab3c9d679f144acc565a729a6a4b054334b667f51257c4d313d7cd`。
+- 应用源码提交：`d73a91886b8121651ecc4760a1b24ce699925cda`，与 APK 内的版本控制信息一致；后续提交只更新发布记录。
 - 沿用触控实验版签名，证书 SHA-256：`339b630de04878f77646e29fdf29a84b6785fa5a5e0b8f1f2cddbda6937428b0`。
-- GitHub Releases 只保留此正式版本的一个 APK；旧预发布包另存本地归档，历史 Git 提交和标签保留。
+- GitHub Releases 只保留此正式版本的一个 APK；旧 1.60 APK 和发布说明已归档到 `artifacts/github-release-archive/v1.60/`，历史 Git 提交和标签保留。
 
 ## 构建检查
 
-正式发布前运行 `testDebugUnitTest lintDebug assembleRelease`：96 项 JVM 测试通过，0 failures / 0 errors；Lint 0 errors / 77 warnings；Release/R8 和四 ABI JNI 构建成功。签名已核对为现有触控版本的同一证书。
+正式发布前运行 `testDebugUnitTest lintDebug assembleRelease`：96 项 JVM 测试通过，0 failures / 0 errors；Lint 0 errors / 77 warnings / 6 information；Release/R8 和四 ABI JNI 构建成功。签名与现有触控版本相同，包名、版本和四 ABI 已核对，正式包未开启 debuggable。提交源码后重新打包，使 APK 记录实际源码提交。
 
 ## 设备与实体输入
 
 Android 16 小米平板 25053RP5CC，游戏横屏 3200×2136；Xiaomi Keyboard 与 2.4G Xiaomi Mi USB Receiver Mouse。设备操作使用普通无线 ADB；应用沿用已授权的 Root 输入模式。
+
+1.61 实测使用 Debug / code28；正式包为相同功能代码的 Release/R8 / code29，本次发布未替换平板上的测试包。下表保留 1.60 的基础操作结果，新增两项 1.61 的实际反馈。
 
 | 范围 | 已验证行为 |
 | --- | --- |
@@ -29,8 +31,12 @@ Android 16 小米平板 25053RP5CC，游戏横屏 3200×2136；Xiaomi Keyboard �
 | 明日方舟 C/F | C 在当前光标处点击；F 按住时停、松开恢复 |
 | 明日方舟 D/A | 当前光标选取干员后，一键开技能／撤退，用户均确认正常 |
 | 明日方舟 S | 暂停中指向干员，按住 S 选中并保持时停，松开恢复、无卡输入；用户回复“正确” |
+| 1.61 明日方舟光标 | 用户确认“明显更顺滑”；最新 120 帧的间隔全部约 16.7ms，旧版频繁出现 33.3ms，详见 [性能记录](MOUSE_PERFORMANCE.md) |
+| 1.61 终末地视角 | 灵敏度独立为 1%–100%、步进 1%；用户在新版 50% 实体确认“转向正常，容易控制” |
 
 原始触控实验包的覆盖安装前后配置逐字节一致。明日方舟技能和撤退的平板校准副本只改 Q／2 及 A／D 的固定落点，终末地方案库保持不变。
+
+1.61 实际保存视角设置后只新增 `aim_sensitivity=0.5`，其他所有既有键值不变。备份统一输出 schema v4，保留独立视角与光标设置，兼容读取 v1/v2/v3。
 
 ## 尚未确认或保留事项
 

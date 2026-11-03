@@ -2,6 +2,8 @@
 
 交接更新：2026-11-03（Asia/Shanghai）。本文是当前交接入口；较早的 `PROJECT_MEMORY.md` 中的虚拟机路径、无法连接设备及旧版本描述属于历史记录。
 
+1.61 正式发布补记（2026-11-03）：用户已确认两项优化并要求推送新代码和发布包，沿用直接合并 main、只留一个正式包的授权。正式版本 **1.61 / code29**，应用源码 `d73a918`，96 项测试、Lint、同签名 Release/R8 与四 ABI 构建通过。包为 `artifacts/KeySyncFix-v1.61.apk`，5,990,838 字节，SHA-256 `46da07e0ceab3c9d679f144acc565a729a6a4b054334b667f51257c4d313d7cd`；旧 1.60 包及说明已归档。平板仍装已实测的 1.61-debug / code28，未因发布操作覆盖安装。最新发布配置见 [docs/VALIDATION.md](docs/VALIDATION.md)，下文未提交／仅本地状态为历史。
+
 本地性能版补记（1.61-debug / code28）：分支 `codex/mouse-performance`，基于 `main` 的 `8d913f3`。光标改为帧回调直接更新原生图层，用户确认明显更顺滑，最近 120 帧间隔全部约 16.7ms。视角独立为 1%–100%、步进 1%，用户在新版 50% 实体确认“转向正常，容易控制”。光标速度保留实际倍率，备份升级 v4。16 项相关测试、Lint、Debug/四 ABI 构建通过，同签名覆盖安装且配置逐字节一致；随后实际保存只新增视角字段，原有设置和方案完整保留。详见 [docs/MOUSE_PERFORMANCE.md](docs/MOUSE_PERFORMANCE.md)。
 
 正式版发布补记（2026-11-02）：用户已确认当前 fork 稳定，授权直接合并、推送 GitHub 并只保留一个正式包。本轮版本为 **1.60 / versionCode 27**，保留包名和迁移签名，使用 Release/R8；此前“未授权推送／仅本地／实验版”的段落均为历史。发布和验证状态统一见 [docs/VALIDATION.md](docs/VALIDATION.md)。

@@ -1,6 +1,6 @@
 # 1.61 鼠标性能优化
 
-日期：2026-11-03。分支 `codex/mouse-performance`，基于 `main` 的 `8d913f3`。当前安装 `1.61-debug` / versionCode 28，GitHub 正式版仍为 1.60。
+日期：2026-11-03。性能实测在 `codex/mouse-performance` 完成，基于 `main` 的 `8d913f3`。平板安装 `1.61-debug` / versionCode 28；正式发布包为 **1.61 / versionCode 29**，构建与签名信息见 [VALIDATION.md](VALIDATION.md)。
 
 ## 实现
 
@@ -29,7 +29,7 @@ gfxinfo 绘制耗时 p50/p90/p95/p99：旧版 8/14/15/19ms，新版 7/13/14/15ms
 ## 验证
 
 - 16 项相关测试通过：SoftwareCursorController、MappingBackupCodec、MumuProfileStore、GestureController，覆盖最新位置绘制、取消/钳制、备份兼容、新设置独立保存恢复和既有手势。
-- Lint：0 errors / 77 warnings / 6 information；Debug、四 ABI JNI 构建成功，本轮未重新构建 Release/R8。
+- 性能调试阶段：Lint 0 errors / 77 warnings / 6 information，Debug、四 ABI JNI 构建成功。发布阶段完整 96 项测试通过，Release/R8 和四 ABI 构建成功，正式包与源码提交核对见 [VALIDATION.md](VALIDATION.md)。
 - 同迁移证书覆盖安装，安装前后 DataStore 文件逐字节一致，两游戏方案保留。
 - APK：`artifacts/keysync-1.61-mouse-performance-debug.apk`，SHA-256 `81977e214c4fa090f8068a0222072c74414469f74b414382da65368a7f525fee`。
 - 没有使用 adb root、su 或 root shell；应用使用原有已授权 RootService。

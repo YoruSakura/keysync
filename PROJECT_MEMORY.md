@@ -451,3 +451,10 @@ export ANDROID_SDK_ROOT="/home/sakura/.cache/keysync-build/android-sdk"
 - 新偏好 `aim_sensitivity`；备份 schema v4，仍接受 v1/v2/v3，旧备份默认视角 50%。16 项相关测试通过，Lint 0 errors / 77 warnings / 6 information，Debug 和四 ABI JNI 成功；本轮未重新构建 Release/R8。同迁移证书覆盖安装，升级前后 DataStore 字节一致。
 - 平板 UI 实际验证 50%→51% 步进，再设回 50% 收起保存；只新增 `aim_sensitivity=0.5`，全部原有键值（含两游戏方案库与选择）逐项字节一致。终末地从 KeySync 打开后，用户通过实体 Alt＋鼠标验证新版 50%，确认“转向正常，容易控制”。两个问题均已获得用户实机确认。
 - APK：`artifacts/keysync-1.61-mouse-performance-debug.apk`；SHA-256 `81977e214c4fa090f8068a0222072c74414469f74b414382da65368a7f525fee`。唯一无线 ADB 仍为 `10.1.1.115:45941`，2.4G 鼠标；无 adb root / su / root shell，应用沿用既有 RootService。
+
+## 1.61 正式发布准备（2026-11-03）
+
+- 用户明确要求推送新代码和发布包，沿用直接合并 main、只保留一个正式发布包的授权。应用源码已提交为 `d73a91886b8121651ecc4760a1b24ce699925cda`；后续发布记录提交不再改变应用代码。较早“尚未提交／仅本地”是性能调试阶段状态。
+- 正式版本 1.61 / code29，高于设备已验证的 1.61-debug / code28。完整 96 项 JVM 测试通过，Lint 0 errors / 77 warnings / 6 information；Release/R8、四 ABI JNI 构建成功。APK 中版本控制信息已核对为 `d73a918`，包名和迁移签名一致，debuggable 未开启。
+- 正式 APK `artifacts/KeySyncFix-v1.61.apk`，5,990,838 字节，SHA-256 `46da07e0ceab3c9d679f144acc565a729a6a4b054334b667f51257c4d313d7cd`。旧 1.60 APK 及 release.json 已下载归档至 `artifacts/github-release-archive/v1.60/`，SHA-256 与旧正式包相符。
+- README、验证状态、Touch Core 文档和交接入口已更新为 1.61；实体测试及采样详见 `docs/MOUSE_PERFORMANCE.md`。发布操作未使用 ADB，平板保持已实测的 Debug / code28 和现有配置。
