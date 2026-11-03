@@ -116,12 +116,15 @@ class EventInjectorImplTest {
     fun `camera rebase preserves moves on both sides of the ordered restart`() = runBlocking {
         val manager = RecordingEventManager()
         val injector = TestEventInjector(manager)
+        val addPointerGate = CompletableDeferred<Unit>()
+        manager.addPointerGate = addPointerGate
 
         try {
             injector.injectPointer(1, Offset(500f, 200f))
             injector.updatePointerPosition(1, Offset(4f, -2f))
             injector.rebasePointer(1, Offset(500f, 200f))
             injector.updatePointerPosition(1, Offset(6f, 3f))
+            addPointerGate.complete(Unit)
             injector.awaitIdle()
 
             assertEquals(listOf(1), manager.activePointerIds())

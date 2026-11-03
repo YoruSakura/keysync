@@ -192,6 +192,8 @@ abstract class EventInjectorImpl(private val eventManager: EventManager = EventM
         cancelGestureAnimator(pointerID)
         val newEpoch = synchronized(pointerMoveLock) {
             val epoch = (pointerMoveEpochs[pointerID] ?: 0L) + 1L
+            // Later input must enter the new batch even while the actor is busy.
+            pointerMoveEpochs[pointerID] = epoch
             pendingRebaseEpochs[pointerID] = epoch
             epoch
         }
@@ -201,8 +203,9 @@ abstract class EventInjectorImpl(private val eventManager: EventManager = EventM
             // DOWN below.
             drainPendingMoves(beforeEpoch = newEpoch)
             synchronized(pointerMoveLock) {
-                pointerMoveEpochs[pointerID] = newEpoch
-                pendingRebaseEpochs.remove(pointerID)
+                if (pendingRebaseEpochs[pointerID] == newEpoch) {
+                    pendingRebaseEpochs.remove(pointerID)
+                }
             }
             releasePointerNow(pointerID)
             addEventDownNow(pointerID, position.x, position.y)
