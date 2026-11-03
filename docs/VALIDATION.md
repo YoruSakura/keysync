@@ -17,6 +17,8 @@
 
 首轮云端检查暴露旧引擎镜头 rebase 的排队问题：重置尚未执行时，后续位移仍进入旧批次。借助现有测试的 addPointerGate 固定复现（预期两个位移，实际合为一个），在提交 rebase 时立即更新批次编号，旧任务仅清除自己的待重置标记。修复后完整 96 项测试和 Release/R8 构建再次通过，未削弱断言或跳过测试。
 
+修复后的 [GitHub Actions 检查](https://github.com/YoruSakura/keysync/actions/runs/41578640823) 已成功，检查提交为 `05e6ab9`；后续仅补记发布状态，应用代码不变。正式下载见 [v1.61](https://github.com/YoruSakura/keysync/releases/tag/v1.61)。
+
 ## 设备与实体输入
 
 Android 16 小米平板 25053RP5CC，游戏横屏 3200×2136；Xiaomi Keyboard 与 2.4G Xiaomi Mi USB Receiver Mouse。设备操作使用普通无线 ADB；应用沿用已授权的 Root 输入模式。
